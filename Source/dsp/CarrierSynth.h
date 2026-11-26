@@ -1,4 +1,4 @@
-// Basemental Talk Box - the carrier synth (what goes up the tube).
+// Raj T Vocal - the carrier synth (what goes up the tube).
 // Two engines, like the two keyboards associated with the classic funk talk box sound:
 //   MINI : three-oscillator subtractive mono synth (saws + sub square) into a 4-pole transistor ladder
 //   DX   : two-operator FM with modulator self-feedback (the buzzy, bright, saw-like FM "talker" patch)
@@ -238,7 +238,32 @@ public:
             for (auto& v : voices) if (v.note == note) v.stop();
     }
 
-    void allNotesOff() { stackSize = 0; for (auto& v : voices) v.stop(); }
+    void allNotesOff() { stackSize = 0; for (auto& v : voices) v.stop(); autoOn = false; }
+
+    // --- AUTO-TUNE: the voice drives the synth's pitch when no keys are held ---
+    void autoStart (float semis, float vel, float retuneSec)
+    {
+        auto& v = voices[0];
+        v.note = -2; v.velocity = vel;
+        v.targetPitch = semis;
+        if (! v.active() || v.env.stage == ADSR::Release) v.pitch = semis;
+        v.glideCoef = (float) std::exp (-1.0 / (std::max (0.0005f, retuneSec) * sr * 0.3));
+        if (! v.active() || v.env.stage == ADSR::Release)
+        {
+            if (! v.active()) { v.ladder.reset(); v.fb1 = v.fb2 = 0; }
+            v.env.gateOn(); v.vibOnset = 0.0f;
+        }
+        autoOn = true;
+    }
+    void autoSetTarget (float semis, float retuneSec)
+    {
+        auto& v = voices[0];
+        v.targetPitch = semis;
+        v.glideCoef = (float) std::exp (-1.0 / (std::max (0.0005f, retuneSec) * sr * 0.3));
+    }
+    void autoStop() { if (autoOn) { voices[0].stop(); autoOn = false; } }
+    bool autoActive() const { return autoOn; }
+    float currentPitch() const { return voices[0].pitch; }
     int heldNotes() const { return stackSize; }
     int activeVoices() const { int n = 0; for (auto& v : voices) n += v.active() ? 1 : 0; return n; }
     bool anyActive() const { return activeVoices() > 0; }
@@ -283,5 +308,6 @@ private:
     double clock = 0, vibPhase = 0;
     float bend = 0.0f, modWheel = 0.0f;
     bool wheelVibrato = true;
+    bool autoOn = false;
 };
 } // namespace btb

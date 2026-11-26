@@ -269,6 +269,7 @@ bool MicBridge::tryOpen()
     generation.fetch_add (1);
     openName = pick->name;
     openWireless = pick->wireless;
+    wirelessOpen.store (pick->wireless);
     device = std::move (d);
     device->start (this);
 
@@ -345,7 +346,12 @@ void MicBridge::audioDeviceIOCallbackWithContext (const float* const* in, int nu
 //==============================================================================
 void MicBridge::read (float* dest, int n)
 {
-    auto silence = [&] { juce::FloatVectorOperations::clear (dest, n); };
+    // never jump to silence (that's a click): glide the last sample down to zero
+    auto silence = [&]
+    {
+        for (int i = 0; i < n; ++i) { lastOut *= 0.995f; dest[i] = lastOut; }
+        fadeIn = 0.0f;
+    };
     const auto gen = generation.load (std::memory_order_acquire);
     if (gen != seenGen)
     {
@@ -357,10 +363,13 @@ void MicBridge::read (float* dest, int n)
     if (! running.load() || mr <= 0 || hr <= 0) { silence(); primed = false; return; }
 
     const double base = mr / hr;
+    fadeStep = (float) (1.0 / (0.005 * hr));
     const auto w = writeIdx.load (std::memory_order_acquire);
     auto r = readIdx.load (std::memory_order_relaxed);
     const double fill = (double) (w - r);
-    const double target = 1.5 * micBlock.load() + n * base + 48.0;
+    // wireless/Bluetooth devices deliver audio in bursts: give them a deeper cushion
+    const double cushion = wirelessOpen.load() ? 0.040 * mr : 48.0;
+    const double target = 1.5 * micBlock.load() + n * base + cushion;
 
     if (! primed)
     {
@@ -380,8 +389,9 @@ void MicBridge::read (float* dest, int n)
         {
             if (r >= w)
             {
-                // underrun: fade out the rest and rebuffer
-                for (int j = i; j < n; ++j) dest[j] = 0.0f;
+                // underrun: fade out the rest smoothly and rebuffer
+                for (int j = i; j < n; ++j) { lastOut *= 0.995f; dest[j] = lastOut; }
+                fadeIn = 0.0f;
                 primed = false;
                 readIdx.store (r, std::memory_order_release);
                 return;
@@ -395,7 +405,9 @@ void MicBridge::read (float* dest, int n)
         const float c0 = hist[1], c1 = 0.5f * (hist[2] - hist[0]);
         const float c2 = hist[0] - 2.5f * hist[1] + 2.0f * hist[2] - 0.5f * hist[3];
         const float c3 = 0.5f * (hist[3] - hist[0]) + 1.5f * (hist[1] - hist[2]);
-        dest[i] = ((c3 * t + c2) * t + c1) * t + c0;
+        fadeIn = juce::jmin (1.0f, fadeIn + fadeStep);   // ~5 ms fade-in after any gap
+        lastOut = (((c3 * t + c2) * t + c1) * t + c0) * fadeIn;
+        dest[i] = lastOut;
     }
     readIdx.store (r, std::memory_order_release);
 }

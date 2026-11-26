@@ -3,8 +3,8 @@
 # Usage: packaging/build_mac_installer.sh <artefacts-dir> <version> <out-dir>
 set -euo pipefail
 ART="$1"; VERSION="$2"; OUT="$3"
-NAME="Basemental Talk Box"
-ID="com.basemental.talkbox"
+NAME="Raj T Vocal"
+ID="com.basemental.rajtvocal"
 WORK="$(mktemp -d)"
 mkdir -p "$OUT"
 
@@ -44,5 +44,5 @@ cat > "$WORK/distribution.xml" <<XML
 </installer-gui-script>
 XML
 
-productbuild --distribution "$WORK/distribution.xml" --package-path "$WORK" "$OUT/Basemental-Talk-Box-$VERSION-macOS.pkg"
-echo "Built $OUT/Basemental-Talk-Box-$VERSION-macOS.pkg"
+productbuild --distribution "$WORK/distribution.xml" --package-path "$WORK" "$OUT/Raj-T-Vocal-$VERSION-macOS.pkg"
+echo "Built $OUT/Raj-T-Vocal-$VERSION-macOS.pkg"

@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 
 # ---- Product identity (change the name here in one place) -------------------
-set(PRODUCT_NAME "Basemental Talk Box")
+set(PRODUCT_NAME "Raj T Vocal")
 set(PRODUCT_VERSION 1.0.0)
 
-project(BasementalTalkBox VERSION ${PRODUCT_VERSION} LANGUAGES C CXX)
+project(RajTVocal VERSION ${PRODUCT_VERSION} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,12 +41,12 @@ if(DEFINED AAX_SDK_PATH AND (APPLE OR WIN32))
     list(APPEND PLUGIN_FORMATS AAX)
 endif()
 
-juce_add_plugin(BasementalTalkBox
+juce_add_plugin(RajTVocal
     PRODUCT_NAME "${PRODUCT_NAME}"
     COMPANY_NAME "Basemental"
-    BUNDLE_ID com.basemental.talkbox
+    BUNDLE_ID com.basemental.rajtvocal
     PLUGIN_MANUFACTURER_CODE Bsml
-    PLUGIN_CODE BTlk
+    PLUGIN_CODE RjTv
     FORMATS ${PLUGIN_FORMATS}
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
@@ -57,30 +57,30 @@ juce_add_plugin(BasementalTalkBox
     AU_MAIN_TYPE kAudioUnitType_MusicDevice
     VST3_CATEGORIES Instrument Synth
     AAX_CATEGORY AAX_ePlugInCategory_SWGenerators
-    LV2URI "https://basemental.com/plugins/talkbox"
+    LV2URI "https://basemental.com/plugins/rajtvocal"
     MICROPHONE_PERMISSION_ENABLED TRUE
-    MICROPHONE_PERMISSION_TEXT "Basemental Talk Box uses your microphone as the talk box mouth.")
+    MICROPHONE_PERMISSION_TEXT "Raj T Vocal uses your microphone as the talk box mouth.")
 
-target_sources(BasementalTalkBox PRIVATE
+target_sources(RajTVocal PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/MicBridge.cpp
     Source/MicSetupPanel.cpp)
 
-target_include_directories(BasementalTalkBox PRIVATE Source)
+target_include_directories(RajTVocal PRIVATE Source)
 
 if(UNIX AND NOT APPLE)
     # Linux standalone: JACK and ALSA (both loaded at run time if installed)
-    target_compile_definitions(BasementalTalkBox PUBLIC JUCE_JACK=1)
+    target_compile_definitions(RajTVocal PUBLIC JUCE_JACK=1)
 endif()
 
-target_compile_definitions(BasementalTalkBox PUBLIC
+target_compile_definitions(RajTVocal PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
-target_link_libraries(BasementalTalkBox
+target_link_libraries(RajTVocal
     PRIVATE
         juce::juce_audio_utils
         juce::juce_audio_processors

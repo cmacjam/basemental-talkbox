@@ -1,4 +1,4 @@
-name: Build Basemental Talk Box
+name: Build Raj T Vocal
 
 # Builds every platform on each push:
 #   macOS   -> AU + VST3 + Standalone (+ AAX for Pro Tools), universal arm64/x86_64, .pkg installer
@@ -55,25 +55,25 @@ jobs:
 
       - name: Ad-hoc sign
         run: |
-          ART="build/BasementalTalkBox_artefacts/Release"
-          codesign --force --deep -s - "$ART/AU/Basemental Talk Box.component"
-          codesign --force --deep -s - "$ART/VST3/Basemental Talk Box.vst3"
-          codesign --force --deep -s - "$ART/Standalone/Basemental Talk Box.app"
+          ART="build/RajTVocal_artefacts/Release"
+          codesign --force --deep -s - "$ART/AU/Raj T Vocal.component"
+          codesign --force --deep -s - "$ART/VST3/Raj T Vocal.vst3"
+          codesign --force --deep -s - "$ART/Standalone/Raj T Vocal.app"
 
       - name: Validate Audio Unit (auval)
         run: |
           mkdir -p ~/Library/Audio/Plug-Ins/Components
-          cp -R "build/BasementalTalkBox_artefacts/Release/AU/Basemental Talk Box.component" ~/Library/Audio/Plug-Ins/Components/
+          cp -R "build/RajTVocal_artefacts/Release/AU/Raj T Vocal.component" ~/Library/Audio/Plug-Ins/Components/
           killall -9 AudioComponentRegistrar || true
           sleep 3
-          auval -v aumu BTlk Bsml
+          auval -v aumu RjTv Bsml
 
       - name: Build installer (.pkg)
-        run: packaging/build_mac_installer.sh build/BasementalTalkBox_artefacts/Release "$VERSION" dist
+        run: packaging/build_mac_installer.sh build/RajTVocal_artefacts/Release "$VERSION" dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Basemental-Talk-Box-macOS
+          name: Raj-T-Vocal-macOS
           path: dist/*
 
   windows:
@@ -105,16 +105,16 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          $art = "build/BasementalTalkBox_artefacts/Release"
-          $items = @("$art/VST3/Basemental Talk Box.vst3", "$art/Standalone/Basemental Talk Box.exe")
-          if (Test-Path "$art/AAX/Basemental Talk Box.aaxplugin") { $items += "$art/AAX/Basemental Talk Box.aaxplugin" }
+          $art = "build/RajTVocal_artefacts/Release"
+          $items = @("$art/VST3/Raj T Vocal.vst3", "$art/Standalone/Raj T Vocal.exe")
+          if (Test-Path "$art/AAX/Raj T Vocal.aaxplugin") { $items += "$art/AAX/Raj T Vocal.aaxplugin" }
           Copy-Item packaging/INSTALL-Windows.txt "$art/INSTALL.txt"
           $items += "$art/INSTALL.txt"
-          Compress-Archive -Path $items -DestinationPath "dist/Basemental-Talk-Box-$env:VERSION-Windows.zip"
+          Compress-Archive -Path $items -DestinationPath "dist/Raj-T-Vocal-$env:VERSION-Windows.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Basemental-Talk-Box-Windows
+          name: Raj-T-Vocal-Windows
           path: dist/*.zip
 
   linux:
@@ -137,18 +137,18 @@ jobs:
 
       - name: Package (.tar.gz)
         run: |
-          ART="build/BasementalTalkBox_artefacts/Release"
-          PKG="Basemental-Talk-Box-$VERSION-Linux-x86_64"
+          ART="build/RajTVocal_artefacts/Release"
+          PKG="Raj-T-Vocal-$VERSION-Linux-x86_64"
           mkdir -p "dist/$PKG"
-          cp -R "$ART/VST3/Basemental Talk Box.vst3" "$ART/LV2/Basemental Talk Box.lv2" "dist/$PKG/"
-          cp "$ART/Standalone/Basemental Talk Box" "dist/$PKG/"
+          cp -R "$ART/VST3/Raj T Vocal.vst3" "$ART/LV2/Raj T Vocal.lv2" "dist/$PKG/"
+          cp "$ART/Standalone/Raj T Vocal" "dist/$PKG/"
           cp packaging/install_linux.sh "dist/$PKG/install.sh"
           chmod +x "dist/$PKG/install.sh"
           tar -C dist -czf "dist/$PKG.tar.gz" "$PKG"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Basemental-Talk-Box-Linux
+          name: Raj-T-Vocal-Linux
           path: dist/*.tar.gz
 
   release:

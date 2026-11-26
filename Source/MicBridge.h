@@ -1,4 +1,4 @@
-// Basemental Talk Box - MicBridge
+// Raj T Vocal - MicBridge
 // Opens any microphone directly (built-in, USB interface, Bluetooth headset/AirPods, iPhone mic...),
 // independent of the DAW's own audio device, and feeds it to the plug-in at the host's sample rate.
 //
@@ -115,6 +115,8 @@ private:
     bool primed = false;
     double frac = 0.0, corr = 0.0;
     float hist[4] {};
+    float lastOut = 0.0f, fadeIn = 0.0f, fadeStep = 0.004f;
+    std::atomic<bool> wirelessOpen { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MicBridge)
 };

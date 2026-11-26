@@ -1,4 +1,4 @@
-# Basemental Talk Box
+# Raj T Vocal
 
 A talk box instrument for **Logic Pro, Pro Tools, Windows and Linux**, plus a standalone app on all three operating systems.
 
@@ -40,17 +40,35 @@ Bluetooth mics (AirPods, headsets) and an iPhone used as a mic work too. Expect 
 
 In the standalone app, the same panel also picks your **speakers or headphones**.
 
+## Auto-tune: sing without pressing keys
+
+With **AUTO-TUNE** on (the default), you don't have to hold a key. Just sing: Raj T Vocal hears your pitch and plays the synth on the nearest note of the **Key** and **Scale** you pick, so the talk box sound comes out on its own.
+
+- **Retune** sets how fast it snaps: all the way down is the hard, robotic snap; turn it up for a smooth, natural glide.
+- **Octave** plays the synth up to two octaves above or below your voice.
+- **Keys always win:** press a key and it takes over the pitch instantly; let go and auto-tune picks back up.
+- The **YOU SANG → SYNTH PLAYS** display shows the note you sang, how many cents off it was, and the note it was tuned to.
+
+## No static
+
+The voice path is built to stay clean with any mic, including noisy Bluetooth ones:
+- A low-cut filter removes rumble, hum and handling noise.
+- An automatic noise gate learns your mic's hiss in the first second and stays above it. Hiss alone never opens the sound, even from a mic hissing at -40 dBFS.
+- Consonants (S, T, K) only pass while you're actually singing, so the gaps between words are dead quiet.
+- If the mic connection hiccups, the audio fades out and back in over a few milliseconds instead of clicking.
+- **Volume** defaults to **50 %** (-6 dB), and a safety limiter stops the output from ever exceeding 0 dBFS.
+
 ## Or use your DAW's side chain
 
 Switch the panel to **DAW SIDE CHAIN** and route your mic track into the plug-in's mono **Voice (Side Chain)** input:
 
 **Logic Pro / MainStage (AU)**
-1. Create a **Software Instrument** track and load **Basemental Talk Box** (AU Instruments → Basemental).
+1. Create a **Software Instrument** track and load **Raj T Vocal** (AU Instruments → Basemental).
 2. Put your mic on an **Audio** track. You can turn that track's volume down; you don't need to hear the dry voice.
 3. In the plug-in window, open the **Side Chain** menu (top right) and choose the mic track.
 
 **Pro Tools (AAX)**
-1. Create an **Instrument** track and insert **Basemental Talk Box** (Instrument → Basemental).
+1. Create an **Instrument** track and insert **Raj T Vocal** (Instrument → Basemental).
 2. Put your mic on an **Audio** track and add a **Send** to a bus, e.g. "Talk Voice". Set the send to pre-fader if you want the mic fader down.
 3. In the plug-in window, set **Key Input** (the side-chain menu, key icon) to that bus.
 
@@ -79,7 +97,8 @@ No mic? Switch to **VOWEL** and "talk" with the **mod wheel** (it sweeps the vow
 - **MOUTH** (VOICE mode): Sensitivity, Response, Brightness, Consonants
 - **VOWEL** (no mic): Vowel, Wah, Talk Time
 - **THE BOX**: Drive, Tube, Leak
-- **DOUBLER**, **ROOM**, **MASTER** (Bend, Tune, Volume), plus meters
+- **AUTO-TUNE**: On, Key, Scale, Retune, Octave, plus the YOU SANG → SYNTH PLAYS display
+- **DOUBLER**, **ROOM**, **MASTER** (Bend, Tune, Volume 0–100 %, default 50 %)
 
 Factory presets: Dayton Funk Lead, DX Talker, Smooth Ballad Talk, West Coast Lead, Vowel Wah (No Mic), Vowel Robot Chords, Poly Talk Pads, Dirty Driver, Dry Studio.
 
@@ -100,7 +119,7 @@ Download the builds from the run's **Artifacts**. If you push a tag like `v1.0.0
 ### Pro Tools (AAX)
 1. Sign up free at **developer.avid.com** and download the **AAX SDK**. Avid's licence doesn't allow it in a public repo.
 2. Upload the SDK `.zip` somewhere private with a direct download link (for example a release asset in a *private* repo, or a cloud link). Then add that link as a repository secret named **`AAX_SDK_URL`** (Settings → Secrets and variables → Actions).
-3. The Mac and Windows jobs then also build `Basemental Talk Box.aaxplugin`. The Mac installer gets an "AAX (Pro Tools)" option.
+3. The Mac and Windows jobs then also build `Raj T Vocal.aaxplugin`. The Mac installer gets an "AAX (Pro Tools)" option.
 4. **Testing:** unsigned AAX builds load in **Pro Tools Developer** (free from Avid). **Selling:** retail Pro Tools only loads AAX plug-ins signed with PACE's **wraptool** (free for Avid developers; needs a PACE account and an iLok).
 
 Building locally: `cmake -B build -DAAX_SDK_PATH=/path/to/aax-sdk ...`
@@ -138,4 +157,4 @@ This checks that the lattice filter matches the LPC maths, that the output takes
 - `Source/PluginProcessor.*`, `Source/PluginEditor.*`: the JUCE plug-in (side-chain voice bus) and UI
 - `Source/Presets.h`: factory presets
 
-*Basemental Talk Box is an original instrument. It isn't affiliated with or endorsed by any artist or manufacturer. Artist and gear names are used only to describe the style of sound.*
+*Raj T Vocal is an original instrument. It isn't affiliated with or endorsed by any artist or manufacturer. Artist and gear names are used only to describe the style of sound.*

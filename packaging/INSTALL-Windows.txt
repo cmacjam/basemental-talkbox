@@ -1,17 +1,17 @@
-Basemental Talk Box - Windows install
+Raj T Vocal - Windows install
 
 VST3 (Cubase, Studio One, FL Studio, Ableton Live, Reaper, Bitwig ...)
-  Copy "Basemental Talk Box.vst3" to:
+  Copy "Raj T Vocal.vst3" to:
     C:\Program Files\Common Files\VST3\
 
 AAX (Pro Tools) - only included when built with the AAX SDK
-  Copy "Basemental Talk Box.aaxplugin" to:
+  Copy "Raj T Vocal.aaxplugin" to:
     C:\Program Files\Common Files\Avid\Audio\Plug-Ins\
   Retail Pro Tools only loads AAX plug-ins signed with PACE/Eden.
   Unsigned builds load in the free "Pro Tools Developer" version from Avid.
 
 Standalone app
-  Run "Basemental Talk Box.exe" from anywhere. Options > Audio Settings:
+  Run "Raj T Vocal.exe" from anywhere. Options > Audio Settings:
   pick your interface (ASIO is best), set the mic as input, enable your MIDI keyboard.
 
 Using it

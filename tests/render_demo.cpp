@@ -50,7 +50,7 @@ struct FakeVoice
         for (int i = 0; i < 4; ++i) y += g[i] * f[i].process (src);
         if (f0 < 0) { static Biquad hp; static bool init = false; if (! init) { hp.highpass (sr, 4500, 0.7); init = true; } y = hp.process (src) * 0.5f; }
         // lip radiation: +6 dB/oct, so the net voice tilt is about -6 dB/oct like a real singer
-        const float rad = (y - prevOut) * 300.0f; prevOut = y;
+        const float rad = (y - prevOut) * 300.0f * (float) (sr / 48000.0); prevOut = y;
         return rad * level;
     }
 };
@@ -148,7 +148,8 @@ int main (int argc, char** argv)
             for (int i = p; i >= 1; --i) { f -= k[i] * bd[i - 1]; bd[i] = bd[i - 1] + k[i] * f; }
             bd[0] = f;
             double y = x; for (int i = 1; i <= p; ++i) y -= a[i] * hist[i];
-            for (int i = p; i >= 2; --i) hist[i] = hist[i - 1]; hist[1] = y;
+            for (int i = p; i >= 2; --i) { hist[i] = hist[i - 1]; }
+            hist[1] = y;
             maxErr = std::max (maxErr, std::abs (y - f));
         }
         std::printf ("  max |lattice - direct| = %.2e\n", maxErr);
@@ -215,13 +216,14 @@ int main (int argc, char** argv)
         {
             auto curveDb = [&] (char v, double f1, double f2)
             {
-                FakeVoice fv2 (sr); Mouth m; m.prepare (sr); MouthParams mp; m.setParams (mp);
-                for (int i = 0; i < sr / 2; ++i) { m.pushVoice (fv2.next (118.0f, v, 0.25f)); m.tick(); }
+                const int mr = sr > 60000 ? sr / 2 : sr;   // the engine runs the mouth at half rate above 60 kHz
+                FakeVoice fv2 (mr); Mouth m; m.prepare (mr); MouthParams mp; m.setParams (mp);
+                for (int i = 0; i < mr / 2; ++i) { m.pushVoice (fv2.next (118.0f, v, 0.25f)); m.tick(); }
                 std::vector<float> h (8192); for (int n = 0; n < 8192; ++n) h[(size_t) n] = m.filter (n == 0 ? 1.0f : 0.0f);
                 double acc = 0; int cnt = 0;
                 for (double f = f1; f <= f2; f += 25, ++cnt)
                 {
-                    std::complex<double> z = 0; for (int n = 0; n < 8192; ++n) z += (double) h[(size_t) n] * std::polar (1.0, -2 * kPi * f * n / sr);
+                    std::complex<double> z = 0; for (int n = 0; n < 8192; ++n) z += (double) h[(size_t) n] * std::polar (1.0, -2 * kPi * f * n / mr);
                     acc += 20 * std::log10 (std::abs (z) + 1e-12);
                 }
                 return acc / cnt;
@@ -251,6 +253,71 @@ int main (int argc, char** argv)
             std::printf ("  %s vowel %.0f: peak %.3f (%.1f dBFS)%s\n", dx ? "DX  " : "MINI", vowel, pk, 20 * std::log10 (pk + 1e-9), bad ? " NaN!" : "");
             check (! bad && pk < 1.6f && pk > 0.05f, "finite, sensible level");
         }
+
+    //--- 5. No static: hiss on the mic must never come out -----------------------------
+    std::printf ("5. static / hiss rejection\n");
+    {
+        double cleanSinging = 0;
+        for (float hissDb : { -60.0f, -48.0f, -40.0f })
+        {
+            std::vector<float> voice ((size_t) (sr * 4.0));
+            Noise hn; hn.seed (21); const float hg = dbToGain (hissDb) * 1.7f;
+            FakeVoice fv (sr);
+            for (size_t i = 0; i < voice.size(); ++i)
+            {
+                const double t = (double) i / sr;
+                const bool sing = (t > 2.0 && t < 2.6) || (t > 3.0 && t < 3.4);
+                voice[i] = hg * hn.next() + (sing ? fv.next (118.0f, 'a', 0.25f) : fv.next (0, 'a', 0));
+            }
+            TalkBoxEngine e; EngineParams p; p.mouth.useVoice = true; p.consonants = 0.6f; p.autoTune = false;
+            e.setParams (p); e.prepare (sr, 512);
+            render (e, { { 0.0, 0, 60, 0.9f }, { 3.95, 1, 60, 0 } }, &voice, 4.0, sr, L, R);
+            const double hissOnly = rmsOf (L, (int) (1.6 * sr), (int) (0.35 * sr));
+            const double singing  = rmsOf (L, (int) (2.2 * sr), (int) (0.3 * sr));
+            const double gap      = rmsOf (L, (int) (2.75 * sr), (int) (0.2 * sr));
+            auto db = [] (double v) { return 20 * std::log10 (v + 1e-12); };
+            std::printf ("  mic hiss %.0f dBFS: hiss only %.1f dB, singing %.1f dB, gap between words %.1f dB\n",
+                         hissDb, db (hissOnly), db (singing), db (gap));
+            if (hissDb < -59) cleanSinging = db (singing);
+            check (db (hissOnly) < -80.0 && db (gap) < db (singing) - 40.0 && db (singing) > cleanSinging - 6.0,
+                   "hiss stays silent, gaps between words are clean, singing comes through");
+        }
+    }
+
+    //--- 6. Auto-tune: no keys, the synth follows the singer, snapped to the scale -------
+    std::printf ("6. auto-tune\n");
+    {
+        struct Case { float f0; int key, scale, octave; float expectHz; const char* what; };
+        const Case cases[] = {
+            { 200.0f, 0, 1, 0, 196.00f, "sing 200 Hz in C major -> G3 196 Hz" },
+            { 238.0f, 0, 1, 0, 246.94f, "sing 238 Hz in C major -> B3 247 Hz (A# not in scale)" },
+            { 238.0f, 0, 0, 0, 233.08f, "sing 238 Hz chromatic -> A#3 233 Hz" },
+            { 200.0f, 0, 1, 1, 392.00f, "octave +1 -> G4 392 Hz" },
+        };
+        for (auto& c : cases)
+        {
+            std::vector<float> voice ((size_t) (sr * 2.0)); FakeVoice fv (sr);
+            for (size_t i = 0; i < voice.size(); ++i) voice[i] = (i > (size_t) (sr * 0.2)) ? fv.next (c.f0, 'a', 0.25f) : 0.0f;
+            TalkBoxEngine e; EngineParams p; p.mouth.useVoice = true; p.autoTune = true; p.key = c.key; p.scale = c.scale; p.octave = c.octave;
+            p.consonants = 0.0f; p.synth.vibrato = 0.0f;
+            e.setParams (p); e.prepare (sr, 512);
+            render (e, {}, &voice, 2.0, sr, L, R);
+            const int st = (int) (1.2 * sr);
+            const int per = pitchPeriod (L, st, 6000, sr / 900, sr / 60);
+            const double hz = (double) sr / per;
+            std::printf ("  %-55s -> %.1f Hz\n", c.what, hz);
+            check (std::abs (hz - c.expectHz) < c.expectHz * 0.02, "auto-tune lands on the right note");
+        }
+        // keys override auto-tune
+        std::vector<float> voice ((size_t) (sr * 2.0)); FakeVoice fv (sr);
+        for (size_t i = 0; i < voice.size(); ++i) voice[i] = (i > (size_t) (sr * 0.2)) ? fv.next (200.0f, 'a', 0.25f) : 0.0f;
+        TalkBoxEngine e; EngineParams p; p.mouth.useVoice = true; p.autoTune = true; p.consonants = 0; p.synth.vibrato = 0;
+        e.setParams (p); e.prepare (sr, 512);
+        render (e, { { 0.8, 0, 72, 0.9f } }, &voice, 2.0, sr, L, R);
+        const double hz = (double) sr / pitchPeriod (L, (int) (1.4 * sr), 6000, sr / 900, sr / 60);
+        std::printf ("  press C5 while singing 200 Hz -> %.1f Hz\n", hz);
+        check (std::abs (hz - 523.25) < 11.0, "the keys take over from auto-tune");
+    }
 
     //--- 4. Demos -----------------------------------------------------------------------------
     std::printf ("4. demos\n");

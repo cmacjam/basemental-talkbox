@@ -1,4 +1,4 @@
-// Basemental Talk Box - the mouth.
+// Raj T Vocal - the mouth.
 // A real talk box plays the synth into your mouth; your vocal tract (tongue, lips, jaw) filters it,
 // and the mic hears the synth's pitch with your vowels and consonants on it.
 //
@@ -50,6 +50,11 @@ public:
         atkC = (float) (1.0 - std::exp (-1.0 / (0.002 * sr)));
         relC = (float) (1.0 - std::exp (-1.0 / (0.030 * sr)));
         gUp  = (float) (1.0 - std::exp (-1.0 / (0.0015 * sr)));
+        floorDown = (float) (1.0 - std::exp (-1.0 / (0.05 * sr)));   // noise floor: falls fast...
+        floorUp   = (float) (1.0 - std::exp (-1.0 / (8.0 * sr)));    // ...rises very slowly
+        floorLearn = (float) (1.0 - std::exp (-1.0 / (0.3 * sr)));
+        bandLp1.lowpass (sr, 4000.0, 0.707); bandLp2.lowpass (sr, 4000.0, 0.707);
+        anaLp1.lowpass (sr, std::min (7000.0, sr * 0.45), 0.707); anaLp2.lowpass (sr, std::min (7000.0, sr * 0.45), 0.707);
         gDn  = (float) (1.0 - std::exp (-1.0 / (0.015 * sr)));
         reset();
     }
@@ -60,7 +65,8 @@ public:
         ringPos = 0; hopCount = 0; prevVoice = 0;
         kCur.fill (0); kTgt.fill (0); kStep.fill (0); kSmooth.fill (0); bd.fill (0);
         gCur = gTgt = gSmooth = gNorm = 1.0f; gStep = 0;
-        rms = 0; gateSmooth = 0; open = 1.0f;
+        bandLp1.reset(); bandLp2.reset(); anaLp1.reset(); anaLp2.reset();
+        rms = 0; gateSmooth = 0; open = 1.0f; noiseFloor = 0.0f; learnSamples = (int) (1.5 * sr);
         haveShape = false;
         // start on a neutral open vowel so the first note isn't silent in VOWEL mode
         setVowelShape (2.0f, 1.0f);
@@ -86,19 +92,30 @@ public:
     // Feed one voice sample (VOICE mode). Returns nothing; analysis happens every hop.
     inline void pushVoice (float x)
     {
-        // level follower on the raw voice: 2 ms attack, 80 ms release
-        const float a = std::abs (x);
+        // level follower on the speech band only (< 4 kHz): hiss above that can't hold the gate open
+        const float a = std::abs (bandLp2.process (bandLp1.process (x)));
         rms += (a > rms ? atkC : relC) * (a - rms);
-        const float pe = x - preEmph * prevVoice; prevVoice = x;
+        // analyse only the part of the voice the talk box can reproduce (< 7 kHz):
+        // hiss above that would otherwise flatten the measured mouth shape
+        const float xb = anaLp2.process (anaLp1.process (x));
+        const float pe = xb - preEmph * prevVoice; prevVoice = xb;
         // for the on-screen mouth: how "front/bright" the vowel is (ee high, oo low)
-        eRaw += 0.002f * (x * x - eRaw); ePe += 0.002f * (pe * pe - ePe);
+        eRaw += 0.002f * (xb * xb - eRaw); ePe += 0.002f * (pe * pe - ePe);
         ring[(size_t) ringPos] = pe;
         if (++ringPos >= win) ringPos = 0;
     }
 
     inline void tick()
     {
-        if (rms < threshold * 0.12f) framesAbove = 0;
+        // Auto noise gate: learn the mic's hiss/room floor and keep the gate 12 dB above it,
+        // so a noisy (e.g. Bluetooth) mic can never open the mouth on its own = no static.
+        const float up = learnSamples > 0 ? floorLearn : floorUp;   // learn quickly for the first 1.5 s
+        if (learnSamples > 0) --learnSamples;
+        noiseFloor += (rms < noiseFloor ? floorDown : up) * (rms - noiseFloor);
+        noiseFloor = std::min (noiseFloor, 0.01f);   // never above -40 dBFS: loud singing always gets through
+        effThreshold = std::max (threshold, noiseFloor * 2.8f);   // 9 dB above the floor
+        effThrDb = 20.0f * std::log10 (effThreshold + 1e-9f);
+        if (rms < effThreshold * 0.12f) framesAbove = 0;
         if (++hopCount >= hop)
         {
             hopCount = 0;
@@ -132,7 +149,7 @@ public:
         float target = 1.0f;
         if (p.useVoice)
         {
-            const float x = std::clamp ((20.0f * std::log10 (rms + 1e-9f) - thrDb) / 15.0f, 0.0f, 1.0f);
+            const float x = std::clamp ((20.0f * std::log10 (rms + 1e-9f) - effThrDb) / 10.0f, 0.0f, 1.0f);
             target = x * x * (3.0f - 2.0f * x);
         }
         gateSmooth += (target > gateSmooth ? gUp : gDn) * (target - gateSmooth);
@@ -172,6 +189,7 @@ public:
         return std::clamp ((db + 18.0f) / 14.0f, 0.0f, 1.0f);
     }
     float voiceLevel() const { return rms; }
+    float noiseFloorLevel() const { return noiseFloor; }
     int getOrder() const { return order; }
     const float* reflection() const { return kCur.data(); }
     float gain() const { return gNorm * gCur; }
@@ -203,7 +221,7 @@ private:
     void analyseVoice()
     {
         // below the gate floor keep the last mouth shape (release tails keep their vowel)
-        if (rms < threshold * 0.12f) return;
+        if (rms < effThreshold * 0.3f) return;
         // need a frame that is mostly voice: wait until the level has been up for a moment
         if (++framesAbove < onsetHops) return;
 
@@ -296,6 +314,10 @@ private:
     float gCur = 1, gTgt = 1, gSmooth = 1, gStep = 0, gNorm = 1;
     float rms = 0, threshold = 0.003f, thrDb = -46.0f, gateSmooth = 0;
     float atkC = 0.01f, relC = 0.0003f, gUp = 0.01f, gDn = 0.001f;
+    Biquad bandLp1, bandLp2, anaLp1, anaLp2;
+    int learnSamples = 0;
+    float floorLearn = 1e-4f;
+    float noiseFloor = 0.0f, floorDown = 0.001f, floorUp = 1e-6f, effThreshold = 0.005f, effThrDb = -46.0f;
     float smoothA = 0.3f, open = 1.0f, openCoef = 0.99f, vowelOffset = 0.0f;
     bool haveShape = false;
     float eRaw = 0, ePe = 0;

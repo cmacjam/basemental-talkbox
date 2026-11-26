@@ -49,6 +49,9 @@ public:
     float getMouthOpen() const   { return mouthOpen.load(); }
     float getMouthWide() const   { return mouthWide.load(); }
     bool  notesHeld() const      { return held.load(); }
+    float getDetectedNote() const  { return detectedNote.load(); }
+    float getCorrectedNote() const { return correctedNote.load(); }
+    bool  isAutoTuning() const     { return autoTuning.load(); }
     bool  isStandalone() const   { return wrapperType == wrapperType_Standalone; }
 
     // direct microphone (message thread)
@@ -74,7 +77,8 @@ private:
     std::atomic<bool> voiceConnected { false };
     std::atomic<int> activeVoices { 0 };
     std::atomic<float> mouthOpen { 0 }, mouthWide { 0.5f };
-    std::atomic<bool> held { false };
+    std::atomic<bool> held { false }, autoTuning { false };
+    std::atomic<float> detectedNote { -1.0f }, correctedNote { -1.0f };
     MicBridge mic;
     std::vector<float> micBuf;
 

@@ -1,4 +1,4 @@
-// Basemental Talk Box - "VOICE INPUT" setup panel: pick a mic in one click.
+// Raj T Vocal - "VOICE INPUT" setup panel: pick a mic in one click.
 #pragma once
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"

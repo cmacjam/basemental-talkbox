@@ -1,4 +1,4 @@
-// Basemental Talk Box - the hardware around the mouth:
+// Raj T Vocal - the hardware around the mouth:
 //   Driver : the compression driver inside the box (band-limited, saturates when pushed)
 //   Tube   : the plastic hose from driver to mouth (a faint, damped pipe resonance)
 //   Mic    : a dynamic vocal mic a couple of centimetres from the lips

@@ -123,7 +123,12 @@ void BasementalTalkBoxProcessor::updateEngineParams()
     e.roomOn    = P (roomOn) > 0.5f;
     e.roomMix   = P (roomMix);
     e.roomSize  = P (roomSize);
-    e.volumeDb  = P (volume);
+    e.volume    = P (volume);
+    e.autoTune  = P (autoTune) > 0.5f;
+    e.key       = juce::roundToInt (P (key));
+    e.scale     = juce::roundToInt (P (scale));
+    e.retune    = P (retune);
+    e.octave    = juce::roundToInt (P (octave));
     engine.setParams (e);
 }
 
@@ -243,7 +248,10 @@ void BasementalTalkBoxProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     activeVoices.store (engine.activeVoices());
     mouthOpen.store (engine.mouthOpen());
     mouthWide.store (engine.mouthWide());
-    held.store (engine.heldNotes() > 0);
+    held.store (engine.heldNotes() > 0 || engine.isAutoTuning());
+    detectedNote.store (engine.detectedMidi());
+    correctedNote.store (engine.correctedMidi());
+    autoTuning.store (engine.isAutoTuning());
 }
 
 //==============================================================================
@@ -263,7 +271,8 @@ void BasementalTalkBoxProcessor::setCurrentProgram (int index)
 
     for (auto* param : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (param))
-            if (rp->getParameterID() != ParamID::voiceSource && rp->getParameterID() != ParamID::micGain)
+            if (! juce::StringArray { ParamID::voiceSource, ParamID::micGain, ParamID::autoTune, ParamID::key,
+                                      ParamID::scale, ParamID::volume }.contains (rp->getParameterID()))
                 rp->setValueNotifyingHost (rp->getDefaultValue());
 
     for (const auto& [id, value] : ps[(size_t) index].values)

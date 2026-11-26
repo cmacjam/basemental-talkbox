@@ -32,7 +32,9 @@ static const std::map<String, String>& tooltipsText()
         { ParamID::roomSize,    "Room size." },
         { ParamID::bendRange,   "Pitch bend range in semitones." },
         { ParamID::tune,        "Master tuning (A4)." },
-        { ParamID::volume,      "Output level." },
+        { ParamID::volume,      "Output level. 50 % (-6 dB) leaves plenty of headroom." },
+        { ParamID::retune,      "How fast auto-tune snaps to the note. All the way down = hard robotic snap, up = smooth and natural." },
+        { ParamID::octave,      "Play the auto-tuned synth this many octaves above or below your voice." },
     };
     return t;
 }
@@ -55,6 +57,23 @@ BasementalTalkBoxEditor::BasementalTalkBoxEditor (BasementalTalkBoxProcessor& p)
     addSwitch (doublerOn, "ON"); addKnob (doubler, "AMOUNT");
     addSwitch (roomOn, "ON"); addKnob (roomMix, "MIX"); addKnob (roomSize, "SIZE");
     addKnob (bendRange, "BEND"); addKnob (tune, "TUNE"); addKnob (volume, "VOLUME");
+    addSwitch (autoTune, "ON"); addKnob (retune, "RETUNE"); addKnob (octave, "OCTAVE");
+    switchById[autoTune]->button.setTooltip ("Sing without pressing keys and the synth follows your pitch, snapped to the key and scale. Keys always take over.");
+
+    for (auto [box, label, text, id] : { std::tuple<ComboBox*, Label*, const char*, const char*> { &keyBox, &keyLabel, "KEY", ParamID::key },
+                                         { &scaleBox, &scaleLabel, "SCALE", ParamID::scale } })
+    {
+        if (auto* cp = dynamic_cast<AudioParameterChoice*> (proc.apvts.getParameter (id)))
+            box->addItemList (cp->choices, 1);
+        label->setText (text, dontSendNotification);
+        label->setJustificationType (Justification::centred);
+        label->setFont (FontOptions (11.5f, Font::bold));
+        label->setColour (Label::textColourId, Colours_::textDim);
+        content.addAndMakeVisible (*box);
+        content.addAndMakeVisible (*label);
+    }
+    keyAtt   = std::make_unique<AudioProcessorValueTreeState::ComboBoxAttachment> (proc.apvts, ParamID::key, keyBox);
+    scaleAtt = std::make_unique<AudioProcessorValueTreeState::ComboBoxAttachment> (proc.apvts, ParamID::scale, scaleBox);
 
     content.addAndMakeVisible (stage);
     micButton.setTooltip ("Pick your microphone or audio interface (Bluetooth works too)");
@@ -211,6 +230,17 @@ void BasementalTalkBoxEditor::timerCallback()
     enable ({ doubler }, proc.apvts.getRawParameterValue (doublerOn)->load() > 0.5f);
     enable ({ roomMix, roomSize }, proc.apvts.getRawParameterValue (roomOn)->load() > 0.5f);
 
+    // auto-tune readout
+    {
+        const bool autoOn = proc.apvts.getRawParameterValue (autoTune)->load() > 0.5f;
+        enable ({ retune, octave }, autoOn && voiceMode);
+        keyBox.setEnabled (autoOn && voiceMode); scaleBox.setEnabled (autoOn && voiceMode);
+        shownSang = proc.getDetectedNote();
+        shownPlays = proc.getCorrectedNote();
+        shownAuto = proc.isAutoTuning();
+        content.repaint (tuneDisplay);
+    }
+
     // the stage
     const double now = Time::getMillisecondCounterHiRes();
     const float dt = lastFrameMs > 0 ? (float) jlimit (0.005, 0.1, (now - lastFrameMs) / 1000.0) : 1.0f / 30.0f;
@@ -303,25 +333,38 @@ void BasementalTalkBoxEditor::layoutContent()
     auto vw = addSection ("VOWEL  (NO MIC)", { rx + 392 + 12, r2y, rw - 392 - 12, rh });
     placeKnobs (inner (vw), { vowel, wah, talkTime }, 16);
 
-    // bottom row: ENVELOPE | THE BOX | DOUBLER | ROOM | MASTER
+    // row 3: ENVELOPE | THE BOX | DOUBLER | ROOM
     const int r3y = 104 + (int) TalkBoxStage::kH + 12, r3h = 160;
     int bx = 20;
     auto next = [&] (int w) { Rectangle<int> r (bx, r3y, w, r3h); bx += w + 12; return r; };
-    auto env = addSection ("ENVELOPE", next (310));
+    auto env = addSection ("ENVELOPE", next (340));
     placeKnobs (inner (env), { attack, decay, sustain, release }, 16);
-    auto box = addSection ("THE BOX", next (232));
+    auto box = addSection ("THE BOX", next (270));
     placeKnobs (inner (box), { drive, tube, leak }, 16);
-    auto db = addSection ("DOUBLER", next (150));
+    auto db = addSection ("DOUBLER", next (190));
     placeKnobs (inner (db), { doubler }, 16);
     placeSwitch (doublerOn, db);
-    auto rm = addSection ("ROOM", next (176));
+    auto rm = addSection ("ROOM", Rectangle<int> (bx, r3y, kBaseW - 20 - bx, r3h));
     placeKnobs (inner (rm), { roomMix, roomSize }, 16);
     placeSwitch (roomOn, rm);
-    auto ms = addSection ("MASTER", Rectangle<int> (bx, r3y, kBaseW - 20 - bx, r3h));
+
+    // row 4: AUTO-TUNE | MASTER
+    const int r4y = r3y + r3h + 12, r4h = 150;
+    auto at = addSection ("AUTO-TUNE  (SING WITHOUT KEYS)", { 20, r4y, 820, r4h });
+    placeSwitch (autoTune, at);
+    {
+        auto a = inner (at);
+        auto cell = [&] (int w) { return a.removeFromLeft (w); };
+        auto k = cell (130);  keyLabel.setBounds (k.removeFromTop (16));   keyBox.setBounds (k.withSizeKeepingCentre (110, 30));
+        auto sc = cell (190); scaleLabel.setBounds (sc.removeFromTop (16)); scaleBox.setBounds (sc.withSizeKeepingCentre (170, 30));
+        placeKnobs (cell (220), { retune, octave }, 16);
+        tuneDisplay = a.reduced (10, 4);
+    }
+    auto ms = addSection ("MASTER", Rectangle<int> (852, r4y, kBaseW - 20 - 852, r4h));
     placeKnobs (inner (ms), { bendRange, tune, volume }, 16);
     meterArea = {};
 
-    const int ky = r3y + r3h + 16;
+    const int ky = r4y + r4h + 16;
     keyboard.setBounds (20, ky, kBaseW - 40, kBaseH - ky - 14);
     keyboard.setKeyWidth ((float) (kBaseW - 40) / 36.0f);   // 36 white keys in C2..C7
     if (micPanel) micPanel->setBounds (0, 0, kBaseW, kBaseH);
@@ -365,6 +408,46 @@ void BasementalTalkBoxEditor::paintContent (Graphics& g)
         g.drawText (s.title, r.getX() + 12, r.getY() + 6, 220, 18, Justification::centredLeft);
         g.setColour (Colours_::accent.withAlpha (0.8f));
         g.fillRect (r.getX() + 12, r.getY() + 26, 26.0f, 2.0f);
+    }
+
+    // auto-tune readout: what you sang -> what the synth plays
+    if (! tuneDisplay.isEmpty())
+    {
+        auto r = tuneDisplay.toFloat();
+        g.setColour (Colour (0xff0f0d12));
+        g.fillRoundedRectangle (r, 8.0f);
+        g.setColour (Colours_::panelEdge);
+        g.drawRoundedRectangle (r, 8.0f, 1.0f);
+        auto top = r.reduced (14, 10);
+        auto cols = top.removeFromTop (top.getHeight() - 22);
+        auto left = cols.removeFromLeft (cols.getWidth() * 0.5f);
+        auto drawCol = [&] (Rectangle<float> c, const String& head, const String& note, Colour col)
+        {
+            g.setColour (Colours_::textDim); g.setFont (FontOptions (10.5f, Font::bold));
+            g.drawText (head, c.removeFromTop (14), Justification::centred);
+            g.setColour (col); g.setFont (FontOptions (34.0f, Font::bold));
+            g.drawText (note, c, Justification::centred);
+        };
+        String cents;
+        if (shownSang >= 0)
+        {
+            const int c = roundToInt ((shownSang - std::round (shownSang)) * 100.0f);
+            cents = (c >= 0 ? "+" : "") + String (c);
+        }
+        drawCol (left, "YOU SANG", midiNoteName (shownSang), Colours_::tubeClear);
+        drawCol (cols, "SYNTH PLAYS", shownAuto ? midiNoteName (shownPlays) : String ("--"), Colours_::accent);
+        // arrow between
+        g.setColour (Colours_::textDim);
+        g.drawArrow (Line<float> (left.getRight() - 14, left.getCentreY() + 6, left.getRight() + 14, left.getCentreY() + 6), 1.5f, 8, 8);
+        g.setFont (FontOptions (11.0f));
+        String status;
+        const bool voiceMode = proc.apvts.getRawParameterValue (ParamID::mouthMode)->load() < 0.5f;
+        if (proc.apvts.getRawParameterValue (ParamID::autoTune)->load() < 0.5f) status = "Auto-tune is off: the synth only plays when you press keys.";
+        else if (! voiceMode) status = "Auto-tune follows your voice: switch the mouth to VOICE.";
+        else if (proc.notesHeld() && ! shownAuto) status = "Keys are playing: they take over the pitch.";
+        else if (shownAuto) status = (cents.isNotEmpty() ? "You're " + cents + " cents off; corrected to the scale." : String ("Tuned to the scale."));
+        else status = "Sing without pressing keys: the synth follows your pitch.";
+        g.drawText (status, top, Justification::centred);
     }
 
     // stage frame

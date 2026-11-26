@@ -43,6 +43,20 @@ namespace ParamID
     // voice input (setup, not part of presets)
     inline constexpr const char* voiceSource= "voiceSource";  // 0 = MIC (direct), 1 = DAW side chain
     inline constexpr const char* micGain    = "micGain";
+    // auto-tune (sing without keys: the synth follows your pitch, snapped to the scale)
+    inline constexpr const char* autoTune   = "autoTune";
+    inline constexpr const char* key        = "key";
+    inline constexpr const char* scale      = "scale";
+    inline constexpr const char* retune     = "retune";
+    inline constexpr const char* octave     = "octave";
+}
+
+inline juce::String midiNoteName (float m)
+{
+    if (m < 0) return "--";
+    static const char* n[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    const int i = juce::roundToInt (m);
+    return juce::String (n[((i % 12) + 12) % 12]) + juce::String (i / 12 - 1);
 }
 
 inline juce::String vowelName (float v)
@@ -61,6 +75,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
 
     auto pct = [] (float v, int) { return String (juce::roundToInt (v * 100.0f)) + " %"; };
     auto db  = [] (float v, int) { return String (v, 1) + " dB"; };
+    (void) db;
     auto sec = [] (float v, int) { return v < 1.0f ? String (juce::roundToInt (v * 1000.0f)) + " ms" : String (v, 2) + " s"; };
 
     auto addF = [&] (const char* id, const char* name, NormalisableRange<float> r, float def,
@@ -110,10 +125,21 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     addF (roomSize,   "Room Size",   { 0.0f, 1.0f }, 0.4f, pct);
     addF (bendRange,  "Bend Range",  { 1.0f, 12.0f, 1.0f }, 2.0f, [] (float v, int) { return String (juce::roundToInt (v)) + " st"; });
     addF (tune,       "Tune",        { 430.0f, 450.0f, 0.01f }, 440.0f, [] (float v, int) { return "A = " + String (v, 1) + " Hz"; });
-    addF (volume,     "Volume",      { -36.0f, 12.0f, 0.1f }, 0.0f, db);
+    addF (volume,     "Volume",      { 0.0f, 1.0f, 0.01f }, 0.5f, pct);   // output level, 50 % = -6 dB
 
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { voiceSource, 1 }, "Voice Input", StringArray { "Microphone", "Side Chain" }, 0));
     addF (micGain,    "Mic Gain",    { -12.0f, 40.0f, 0.1f }, 0.0f, db);
+
+    addB (autoTune,   "Auto-Tune", true);
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { key, 1 }, "Key",
+                    StringArray { "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" }, 0));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { scale, 1 }, "Scale",
+                    StringArray { "Chromatic", "Major", "Minor", "Major Pentatonic", "Minor Pentatonic", "Blues", "Dorian", "Mixolydian" }, 1));
+    addF (retune,     "Retune Speed", { 0.0f, 1.0f }, 0.35f, [] (float v, int) {
+        const float ms = 2.0f * std::pow (100.0f, v);
+        return v < 0.05f ? String ("Robot") : String (juce::roundToInt (ms)) + " ms"; });
+    addF (octave,     "Octave",       { -2.0f, 2.0f, 1.0f }, 0.0f, [] (float v, int) {
+        const int o = juce::roundToInt (v); return o == 0 ? String ("0") : (o > 0 ? "+" : "") + String (o); });
 
     return layout;
 }

@@ -14,7 +14,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    static constexpr int kBaseW = 1180, kBaseH = 820;
+    static constexpr int kBaseW = 1180, kBaseH = 940;
 
 private:
     struct Knob
@@ -58,6 +58,11 @@ private:
     juce::TextButton miniButton { "MINI" }, dxButton { "DX" };
     juce::TextButton voiceButton { "VOICE" }, vowelButton { "VOWEL" };
     juce::TextButton micButton;
+    juce::ComboBox keyBox, scaleBox;
+    juce::Label keyLabel, scaleLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> keyAtt, scaleAtt;
+    juce::Rectangle<int> tuneDisplay;
+    float shownSang = -1.0f, shownPlays = -1.0f; bool shownAuto = false;
     TalkBoxStage stage;
     std::unique_ptr<MicSetupPanel> micPanel;
     void showMicPanel (bool show);

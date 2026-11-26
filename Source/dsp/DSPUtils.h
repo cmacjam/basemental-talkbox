@@ -1,4 +1,4 @@
-// Basemental Talk Box - small DSP building blocks (no JUCE dependency)
+// Raj T Vocal - small DSP building blocks (no JUCE dependency)
 #pragma once
 #include <cmath>
 #include <vector>
