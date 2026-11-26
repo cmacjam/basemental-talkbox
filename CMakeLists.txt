@@ -61,6 +61,8 @@ juce_add_plugin(RajTVocal
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "Raj T Vocal uses your microphone as the talk box mouth.")
 
+juce_add_binary_data(RajTVocalAssets SOURCES assets/raj.png)
+
 target_sources(RajTVocal PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
@@ -82,6 +84,7 @@ target_compile_definitions(RajTVocal PUBLIC
 
 target_link_libraries(RajTVocal
     PRIVATE
+        RajTVocalAssets
         juce::juce_audio_utils
         juce::juce_audio_processors
     PUBLIC

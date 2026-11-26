@@ -1,4 +1,4 @@
-// Raj T Vocal - the stage: an (original, generic) singer in profile with the talk box hose
+// Raj T Vocal - the stage: Raj T (from his photo) with the talk box hose
 // in their mouth, taped up a mic stand, running down to the talk box on the floor.
 // Everything moves with the real signal:
 //   lips/jaw  <- the mouth gate and the measured vowel (wide EE vs round OO)
@@ -8,6 +8,7 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "BasementalLookAndFeel.h"
+#include "BinaryData.h"
 
 class TalkBoxStage : public juce::Component
 {
@@ -54,26 +55,25 @@ public:
         g.setColour (gold.withAlpha (0.18f));
         g.drawLine (0, 318, kW, 318, 1.0f);
 
-        // --- mic stand (behind the hose) ---
-        const float poleX = 286.0f;
+        // --- mic stand (behind the hose), mic at mouth height on his right ---
+        const float poleX = 312.0f, micY = 248.0f;
         g.setColour (Colour (0xff4a4552));
-        g.fillRect (poleX - 2.0f, 150.0f, 4.0f, 165.0f);
+        g.fillRect (poleX - 2.0f, micY, 4.0f, 314.0f - micY);
         g.drawLine (poleX, 314, poleX - 26, 330, 3.0f);
         g.drawLine (poleX, 314, poleX + 26, 330, 3.0f);
         g.drawLine (poleX, 314, poleX + 2, 333, 3.0f);
-        // boom/clip and mic body pointing at the mouth
         g.setColour (Colour (0xff5b5663));
-        g.fillRoundedRectangle (248.0f, 149.0f, 42.0f, 8.0f, 3.0f);
+        g.fillRoundedRectangle (276.0f, micY - 4.0f, poleX - 274.0f, 8.0f, 3.0f);   // boom + clip
         {
-            ColourGradient grille (Colour (0xffd9d6dd), 230, 143, Colour (0xff77737d), 230, 161, false);
+            ColourGradient grille (Colour (0xffd9d6dd), 262, micY - 10, Colour (0xff77737d), 262, micY + 10, false);
             g.setGradientFill (grille);
-            g.fillRoundedRectangle (222.0f, 143.0f, 30.0f, 20.0f, 9.0f);
+            g.fillRoundedRectangle (250.0f, micY - 10.0f, 30.0f, 20.0f, 9.0f);
             g.setColour (Colour (0xff2a2730));
-            for (int i = 0; i < 4; ++i) g.drawVerticalLine (227 + i * 6, 145.0f, 161.0f);
+            for (int i = 0; i < 4; ++i) g.drawVerticalLine (255 + i * 6, micY - 8.0f, micY + 8.0f);
         }
 
         // --- the talk box on the floor ---
-        const Rectangle<float> box (322.0f, 266.0f, 74.0f, 52.0f);
+        const Rectangle<float> box (330.0f, 266.0f, 74.0f, 52.0f);
         {
             ColourGradient body (Colour (0xff2e2936), box.getX(), box.getY(), Colour (0xff18151d), box.getX(), box.getBottom(), false);
             g.setGradientFill (body);
@@ -111,214 +111,71 @@ public:
             g.drawText ("FROM SYNTH", Rectangle<float> (kW - 84, 334, 80, 12), Justification::centredRight);
         }
 
-        // --- the singer: an original, realistic man in profile, eyes closed, feeling it ---
-        const float jaw = 12.0f * open;                    // jaw drop
-        const float lipFwd = 3.0f * (1.0f - wide) - 0.8f;  // OO pushes the lips forward, EE pulls them back
-        const float lipGap = 0.6f + 6.5f * open * (0.6f + 0.4f * (1.0f - std::abs (wide - 0.5f) * 1.2f));
+        // --- the singer: Raj T, from his photo (cut out, gold outline, jaw moves with the voice) ---
+        const float jaw = 7.0f * open;   // how far the jaw drops, in stage pixels
         const float sway = std::sin (phase * 2.2f) * out;
+        const float ps = 290.0f / 533.0f, pox = -8.0f, poy = 62.0f;       // photo placement (533 px source)
+        auto P = [&] (float x, float y) { return Point<float> (pox + x * ps, poy + y * ps); };
+        const auto mouthL = P (262, 360), mouthC = P (320, 373), mouthR = P (388, 362);
+        const float chinBottom = P (0, 456).y;
 
         g.saveState();
-        g.addTransform (AffineTransform::rotation (sway * 0.012f, 150, 330));
-
-        const Colour skinLight (0xff9a6a50), skinMid (0xff7a4e3a), skinDark (0xff4a2c22), lipCol (0xff6a3631);
-
-        // neck (trapezius at the back, Adam's apple at the front)
-        Path neck;
-        neck.startNewSubPath (116, 160);                                      // nape
-        neck.cubicTo (114, 190, 108, 212, 96, 236);
-        neck.lineTo (196, 236);
-        neck.cubicTo (186, 222, 180, 210, 178, 200 + jaw * 0.3f);
-        neck.quadraticTo (182, 193 + jaw * 0.4f, 177, 187 + jaw * 0.6f);   // Adam's apple
-        neck.lineTo (166, 180 + jaw * 0.5f);
-        neck.lineTo (146, 164);
-        neck.closeSubPath();
+        g.addTransform (AffineTransform::rotation (sway * 0.008f, 150, 352));
+        if (photo.isValid())
         {
-            ColourGradient ng (skinMid, 170, 190, skinDark, 120, 200, false);
-            g.setGradientFill (ng); g.fillPath (neck);
-            g.setColour (Colours::black.withAlpha (0.35f));   // shadow under the jaw
-            g.fillEllipse (138, 176 + jaw * 0.6f, 46, 14);
-        }
+            const auto place = AffineTransform::scale (ps).translated (pox, poy);
+            g.drawImageTransformed (photo, place);
 
-        // shirt + jacket (over the base of the neck)
-        {
-            Path body;
-            body.startNewSubPath (40, 352);
-            body.cubicTo (44, 262, 80, 226, 112, 216);
-            body.quadraticTo (150, 232, 186, 218);
-            body.cubicTo (216, 228, 236, 252, 244, 290);
-            body.lineTo (252, 352);
-            body.closeSubPath();
-            ColourGradient jacket (Colour (0xff2b2230), 150, 220, Colour (0xff0e0b10), 140, 352, false);
-            g.setGradientFill (jacket); g.fillPath (body);
-            // open shirt collar and lapel edge
-            Path collar;
-            collar.startNewSubPath (150, 226); collar.lineTo (186, 218); collar.lineTo (174, 250); collar.closeSubPath();
-            g.setColour (Colour (0xff5a1e34)); g.fillPath (collar);
-            Path lapel; lapel.startNewSubPath (186, 222); lapel.cubicTo (200, 250, 204, 290, 206, 352);
-            g.setColour (Colours_::accent.withAlpha (0.35f)); g.strokePath (lapel, PathStrokeType (1.2f));
-            g.setColour (Colour (0xff3a2e40).withAlpha (0.6f));
-            g.strokePath (body, PathStrokeType (1.0f));
-            g.setColour (Colours::black.withAlpha (0.35f));      // collar shadow on the neck
-            g.drawLine (114, 217, 184, 220, 2.0f);
-        }
-
-        // head + face profile
-        Path head;
-        head.startNewSubPath (122, 52);                                       // crown
-        head.cubicTo (150, 40, 176, 52, 184, 74);                             // top of the head
-        head.quadraticTo (188, 84, 190, 96);                                  // forehead
-        head.quadraticTo (196, 101, 195, 107);                                // brow ridge
-        head.quadraticTo (193, 112, 196, 116);                                // nasal root
-        head.cubicTo (201, 124, 208, 130, 212, 137);                          // nose bridge -> tip
-        head.quadraticTo (213, 142, 207, 143);                                // tip, underside
-        head.quadraticTo (202, 143, 200, 145);                                // columella -> subnasale
-        head.quadraticTo (200 + lipFwd * 0.5f, 148, 202 + lipFwd, 150 - lipGap * 0.3f);   // philtrum -> upper lip
-        head.quadraticTo (199 + lipFwd, 153 - lipGap * 0.2f, 195, 153);       // upper lip into the corner
-        head.lineTo (199 + lipFwd, 155 + lipGap * 0.7f + jaw * 0.55f);        // lower lip
-        head.quadraticTo (203 + lipFwd, 159 + lipGap * 0.7f + jaw * 0.6f, 198, 163 + jaw * 0.75f);
-        head.quadraticTo (195, 166 + jaw * 0.8f, 198, 171 + jaw);              // mentolabial fold -> chin
-        head.quadraticTo (201, 180 + jaw, 191, 184 + jaw);                     // chin
-        head.quadraticTo (176, 186 + jaw * 0.7f, 160, 180 + jaw * 0.35f);      // underside of the jaw
-        head.quadraticTo (150, 176, 146, 164);                                // jaw angle
-        head.quadraticTo (132, 162, 116, 160);                                // under the ear to the nape
-        head.cubicTo (104, 150, 100, 132, 100, 110);                          // back of the skull
-        head.cubicTo (100, 82, 106, 62, 122, 52);
-        head.closeSubPath();
-        {
-            ColourGradient skin (skinLight, 196, 96, skinDark, 110, 150, true);
-            g.setGradientFill (skin); g.fillPath (head);
-            // soft highlights: forehead, cheekbone, nose bridge
-            g.setColour (Colour (0xffc89474).withAlpha (0.28f));
-            g.fillEllipse (176, 80, 16, 22);
-            g.fillEllipse (170, 122, 22, 12);
-            g.drawLine (199, 118, 208, 134, 2.2f);
-            // cheek shadow + nasolabial fold
-            ColourGradient cheek (skinDark.withAlpha (0.28f), 176, 148, skinDark.withAlpha (0.0f), 192, 162, true);
-            g.setGradientFill (cheek);
-            g.fillEllipse (156, 130, 40, 36);
-            Path fold; fold.startNewSubPath (198, 144); fold.quadraticTo (190, 150, 188, 160 + jaw * 0.4f);
-            g.setColour (skinDark.withAlpha (0.6f)); g.strokePath (fold, PathStrokeType (1.2f));
-        }
-
-        // lips (colour) + the dark gap when the mouth opens
-        {
-            Path upper; upper.startNewSubPath (200, 146);
-            upper.quadraticTo (200 + lipFwd * 0.5f, 148, 202 + lipFwd, 150 - lipGap * 0.3f);
-            upper.quadraticTo (199 + lipFwd, 153 - lipGap * 0.2f, 195, 153); upper.lineTo (196, 149); upper.closeSubPath();
-            Path lower; lower.startNewSubPath (195, 153.5f + jaw * 0.5f);
-            lower.lineTo (199 + lipFwd, 155 + lipGap * 0.7f + jaw * 0.55f);
-            lower.quadraticTo (203 + lipFwd, 159 + lipGap * 0.7f + jaw * 0.6f, 198, 163 + jaw * 0.75f);
-            lower.lineTo (194, 158 + jaw * 0.6f); lower.closeSubPath();
-            g.setColour (lipCol); g.fillPath (upper); g.fillPath (lower);
-            g.setColour (Colour (0xffb07a6a).withAlpha (0.35f));
-            g.drawLine (198, 158 + lipGap * 0.7f + jaw * 0.55f, 201 + lipFwd, 158 + lipGap * 0.7f + jaw * 0.58f, 1.2f);
-            Path cavity;
-            cavity.startNewSubPath (202 + lipFwd, 150 - lipGap * 0.3f + 2.5f);
-            cavity.lineTo (195, 153);
-            cavity.lineTo (199 + lipFwd, 155 + lipGap * 0.7f + jaw * 0.55f - 0.5f);
-            cavity.closeSubPath();
-            g.setColour (Colour (0xff140809)); g.fillPath (cavity);
-            if (open > 0.15f)   // a hint of teeth
+            if (jaw > 0.25f)
             {
-                g.setColour (Colour (0xffe8e0d4).withAlpha (jlimit (0.0f, 0.8f, open)));
-                g.fillRect (198.5f + lipFwd * 0.7f, 150.5f - lipGap * 0.3f + 2.0f, 2.5f, 1.8f);
-            }
-        }
+                // inside of the mouth
+                Path inside;
+                inside.startNewSubPath (mouthL);
+                inside.quadraticTo (mouthC.x, mouthC.y - 1.0f, mouthR.x, mouthR.y);
+                inside.quadraticTo (mouthC.x, mouthC.y + jaw * 1.9f, mouthL.x, mouthL.y);
+                inside.closeSubPath();
+                g.setColour (Colour (0xff1a0b0b)); g.fillPath (inside);
+                g.setColour (Colour (0xffe9e1d6).withAlpha (jlimit (0.0f, 0.7f, open)));   // a hint of top teeth
+                g.fillRoundedRectangle (mouthC.x - 11.0f, mouthC.y - 0.5f, 22.0f, jaw * 0.35f, 1.5f);
 
-        // nostril
-        {
-            Path n; n.startNewSubPath (201, 140); n.quadraticTo (205, 137, 208, 140);
-            g.setColour (skinDark.withAlpha (0.9f)); g.strokePath (n, PathStrokeType (1.6f, PathStrokeType::curved, PathStrokeType::rounded));
-        }
-
-        // closed eye with lashes, eyebrow
-        {
-            Path lid; lid.startNewSubPath (176, 114); lid.quadraticTo (184, 119, 191, 114);
-            g.setColour (Colour (0xff2a1712)); g.strokePath (lid, PathStrokeType (1.8f, PathStrokeType::curved, PathStrokeType::rounded));
-            for (int i = 0; i < 5; ++i)
-            {
-                const float t = 0.2f + 0.15f * (float) i, x = 176 + 15 * t, y = 114 + 4.5f * std::sin (t * MathConstants<float>::pi);
-                g.drawLine (x, y, x - 1.5f, y + 3.0f, 1.0f);
-            }
-            g.setColour (skinDark.withAlpha (0.45f));
-            g.fillEllipse (174, 106, 18, 8);                              // eyelid crease shadow
-            Path brow; brow.startNewSubPath (170, 103); brow.quadraticTo (182, 96, 194, 101);
-            g.setColour (Colour (0xff17100d)); g.strokePath (brow, PathStrokeType (3.2f, PathStrokeType::curved, PathStrokeType::rounded));
-        }
-
-        // ear
-        {
-            Path ear;
-            ear.startNewSubPath (140, 116);
-            ear.cubicTo (130, 112, 126, 130, 130, 144);
-            ear.cubicTo (133, 154, 142, 156, 145, 150);
-            ear.cubicTo (148, 142, 150, 124, 140, 116);
-            g.setColour (skinMid); g.fillPath (ear);
-            g.setColour (skinDark.withAlpha (0.9f)); g.strokePath (ear, PathStrokeType (1.2f));
-            Path inner; inner.startNewSubPath (139, 122); inner.cubicTo (133, 124, 134, 138, 137, 144);
-            inner.quadraticTo (142, 146, 142, 138);
-            g.strokePath (inner, PathStrokeType (1.0f));
-        }
-
-        // hair: short natural cut with a clean hairline and sideburn, fine texture
-        {
-            Path hair;
-            hair.startNewSubPath (118, 50);
-            hair.cubicTo (150, 34, 182, 46, 188, 76);
-            hair.quadraticTo (182, 74, 176, 78);           // hairline at the forehead
-            hair.cubicTo (162, 84, 150, 98, 148, 114);      // temple
-            hair.lineTo (150, 134);                         // sideburn
-            hair.lineTo (144, 134);
-            hair.quadraticTo (140, 118, 132, 114);
-            hair.cubicTo (118, 118, 104, 140, 102, 120);
-            hair.cubicTo (98, 90, 104, 62, 118, 50);
-            hair.closeSubPath();
-            ColourGradient hg (Colour (0xff2a1f1c), 150, 44, Colour (0xff0b0807), 110, 120, false);
-            g.setGradientFill (hg); g.fillPath (hair);
-            Random tex (5);
-            for (int i = 0; i < 420; ++i)
-            {
-                const float hx = 100 + tex.nextFloat() * 90, hy = 36 + tex.nextFloat() * 100;
-                if (hair.contains (hx, hy))
+                // lower lip + chin: stretched down from the bottom of the chin, so no seams
+                Path jawArea;
+                bool first = true;
+                for (auto [x, y] : { std::pair<float, float> { 256, 362 }, { 320, 374 }, { 394, 364 }, { 410, 398 }, { 392, 430 },
+                                     { 352, 452 }, { 300, 458 }, { 262, 446 }, { 242, 410 } })
                 {
-                    g.setColour ((tex.nextBool() ? Colour (0xff3d2e28) : Colour (0xff050303)).withAlpha (0.7f));
-                    g.fillEllipse (hx, hy, 1.6f, 1.6f);
+                    if (first) jawArea.startNewSubPath (P (x, y)); else jawArea.lineTo (P (x, y));
+                    first = false;
                 }
+                jawArea.closeSubPath();
+                const float top = mouthC.y, k = (chinBottom - (top + jaw)) / (chinBottom - top);
+                const auto stretch = AffineTransform::translation (0, -chinBottom).scaled (1.0f, k).translated (0, chinBottom);
+                Path movedJaw (jawArea); movedJaw.applyTransform (stretch);
+                g.saveState();
+                g.reduceClipRegion (movedJaw);
+                g.drawImageTransformed (photo, place.followedBy (stretch));
+                g.restoreState();
             }
         }
 
-        // the GOLD outline around the head and face, glowing when he sings
-        Path outline;
+        // the GOLD outline around his head and shoulders, glowing when he sings
         {
-            // same contour as the head, but open: from the nape over the skull, down the face to the jaw
-            outline.startNewSubPath (116, 160);
-            outline.cubicTo (104, 150, 100, 132, 100, 110);
-            outline.cubicTo (100, 82, 106, 62, 122, 52);
-            outline.cubicTo (150, 40, 176, 52, 184, 74);
-            outline.quadraticTo (188, 84, 190, 96);
-            outline.quadraticTo (196, 101, 195, 107);
-            outline.quadraticTo (193, 112, 196, 116);
-            outline.cubicTo (201, 124, 208, 130, 212, 137);
-            outline.quadraticTo (213, 142, 207, 143);
-            outline.quadraticTo (202, 143, 200, 145);
-            outline.quadraticTo (200 + lipFwd * 0.5f, 148, 202 + lipFwd, 150 - lipGap * 0.3f);
-            outline.startNewSubPath (199 + lipFwd, 155 + lipGap * 0.7f + jaw * 0.55f);        // lips stay un-outlined
-            outline.quadraticTo (203 + lipFwd, 159 + lipGap * 0.7f + jaw * 0.6f, 198, 163 + jaw * 0.75f);
-            outline.quadraticTo (195, 166 + jaw * 0.8f, 198, 171 + jaw);
-            outline.quadraticTo (201, 180 + jaw, 191, 184 + jaw);
-            outline.quadraticTo (176, 186 + jaw * 0.7f, 160, 180 + jaw * 0.35f);
-            outline.quadraticTo (150, 176, 146, 164);
-        }
-        {
+            static const float pts[][2] = { {0,322},{60,302},{118,292},{160,292},{158,268},{147,254},{139,234},{137,210},{140,188},
+                {150,178},{163,183},{170,152},{177,118},{190,86},{210,58},{240,37},{275,23},{318,17},{360,21},{398,39},{425,69},
+                {440,104},{448,150},{452,195},{452,236},{448,270},{446,300},{462,322},{500,338},{533,352} };
+            Path outline;
+            outline.startNewSubPath (P (pts[0][0], pts[0][1]));
+            for (size_t i = 1; i < std::size (pts); ++i) outline.lineTo (P (pts[i][0], pts[i][1]));
+            outline = outline.createPathWithRoundedCorners (6.0f);
             const float glow = jlimit (0.0f, 1.0f, 0.35f + 0.65f * jmax (open, voice));
             for (int i = 3; i >= 1; --i)
             {
-                g.setColour (gold.withAlpha (0.06f * glow * (float) (4 - i)));
+                g.setColour (gold.withAlpha (0.07f * glow * (float) (4 - i)));
                 g.strokePath (outline, PathStrokeType (2.0f + 2.5f * (float) i, PathStrokeType::curved, PathStrokeType::rounded));
             }
-            ColourGradient trim (goldHi, 200, 90, Colour (0xffb07a1e), 110, 200, false);
+            ColourGradient trim (goldHi, 200, 60, Colour (0xffb07a1e), 60, 260, false);
             g.setGradientFill (trim);
-            g.strokePath (outline, PathStrokeType (1.7f, PathStrokeType::curved, PathStrokeType::rounded));
+            g.strokePath (outline, PathStrokeType (1.8f, PathStrokeType::curved, PathStrokeType::rounded));
         }
         g.restoreState();
 
@@ -326,10 +183,10 @@ public:
         Path hose;
         hose.startNewSubPath (box.getX() + 52, box.getY() - 8);         // box coupler
         hose.cubicTo (box.getX() + 52, 236, poleX + 10, 330, poleX + 5, 300);
-        hose.lineTo (poleX + 5, 172);
-        hose.cubicTo (poleX + 5, 152, 272, 141, 252, 141);
-        hose.lineTo (216, 142);
-        hose.quadraticTo (206 + lipFwd, 146, 197, 152 + open * 2.0f);    // into the corner of the mouth
+        hose.lineTo (poleX + 5, micY + 18);
+        hose.cubicTo (poleX + 5, micY - 4, 296, micY - 14, 276, micY - 14);
+        hose.lineTo (252, micY - 13);
+        hose.quadraticTo (226, micY - 12, mouthR.x - 2.0f, mouthR.y + jaw * 0.4f);   // into the corner of his mouth
         const float len = hose.getLength();
 
         g.setColour (Colours_::tubeClear.withAlpha (0.16f + 0.25f * out));
@@ -338,8 +195,8 @@ public:
         g.strokePath (hose, PathStrokeType (1.3f, PathStrokeType::curved, PathStrokeType::rounded));
         // tape holding the hose to the stand and the mic
         g.setColour (Colour (0xffcfc8b8).withAlpha (0.8f));
-        for (float y : { 200.0f, 260.0f }) g.fillRect (poleX - 3, y, 13.0f, 5.0f);
-        g.fillRect (240.0f, 138.0f, 5.0f, 9.0f);
+        for (float y : { 282.0f, 302.0f }) g.fillRect (poleX - 3, y, 13.0f, 5.0f);
+        g.fillRect (266.0f, micY - 18.0f, 5.0f, 9.0f);
 
         // sound pulses travelling up the hose
         if (out > 0.01f)
@@ -364,7 +221,7 @@ public:
                 const float t = std::fmod (phase * 1.4f + (float) i / 3.0f, 1.0f);
                 const float r = 8.0f + 30.0f * t;
                 Path arc;
-                arc.addCentredArc (204, 152, r, r * 1.1f, 0.0f, MathConstants<float>::pi * 0.25f, MathConstants<float>::pi * 0.75f, true);
+                arc.addCentredArc (mouthC.x, mouthC.y + 4.0f, r, r * 1.1f, 0.0f, MathConstants<float>::pi * 0.25f, MathConstants<float>::pi * 0.75f, true);
                 g.setColour (gold.withAlpha ((1.0f - t) * out * open * 0.9f));
                 g.strokePath (arc, PathStrokeType (1.4f));
             }
@@ -392,6 +249,7 @@ public:
     }
 
 private:
+    juce::Image photo = juce::ImageCache::getFromMemory (BinaryData::raj_png, BinaryData::raj_pngSize);
     float open = 0, wide = 0.5f, out = 0, voice = 0, phase = 0;
     bool notes = false, voiceMode = true;
     juce::String vowelLabel;
