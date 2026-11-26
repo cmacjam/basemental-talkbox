@@ -63,7 +63,9 @@ juce_add_plugin(BasementalTalkBox
 
 target_sources(BasementalTalkBox PRIVATE
     Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp)
+    Source/PluginEditor.cpp
+    Source/MicBridge.cpp
+    Source/MicSetupPanel.cpp)
 
 target_include_directories(BasementalTalkBox PRIVATE Source)
 

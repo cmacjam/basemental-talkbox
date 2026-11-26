@@ -40,6 +40,9 @@ namespace ParamID
     inline constexpr const char* bendRange  = "bendRange";
     inline constexpr const char* tune       = "tune";
     inline constexpr const char* volume     = "volume";
+    // voice input (setup, not part of presets)
+    inline constexpr const char* voiceSource= "voiceSource";  // 0 = MIC (direct), 1 = DAW side chain
+    inline constexpr const char* micGain    = "micGain";
 }
 
 inline juce::String vowelName (float v)
@@ -108,6 +111,9 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     addF (bendRange,  "Bend Range",  { 1.0f, 12.0f, 1.0f }, 2.0f, [] (float v, int) { return String (juce::roundToInt (v)) + " st"; });
     addF (tune,       "Tune",        { 430.0f, 450.0f, 0.01f }, 440.0f, [] (float v, int) { return "A = " + String (v, 1) + " Hz"; });
     addF (volume,     "Volume",      { -36.0f, 12.0f, 0.1f }, 0.0f, db);
+
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { voiceSource, 1 }, "Voice Input", StringArray { "Microphone", "Side Chain" }, 0));
+    addF (micGain,    "Mic Gain",    { -12.0f, 40.0f, 0.1f }, 0.0f, db);
 
     return layout;
 }

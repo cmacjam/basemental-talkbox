@@ -57,6 +57,9 @@ public:
     int activeVoices() const { return synth.activeVoices(); }
     float voiceLevel() const { return mouth.voiceLevel(); }
     float gateValue() const  { return mouth.gateValue(); }
+    float mouthOpen() const  { return mouth.mouthOpen(); }
+    float mouthWide() const  { return mouth.mouthWide(); }
+    int heldNotes() const    { return synth.heldNotes(); }
     float outputLevel() const { return outPeak; }
 
     // voice may be nullptr (no sidechain). L/R are written (not added to).

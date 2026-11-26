@@ -90,6 +90,8 @@ public:
         const float a = std::abs (x);
         rms += (a > rms ? atkC : relC) * (a - rms);
         const float pe = x - preEmph * prevVoice; prevVoice = x;
+        // for the on-screen mouth: how "front/bright" the vowel is (ee high, oo low)
+        eRaw += 0.002f * (x * x - eRaw); ePe += 0.002f * (pe * pe - ePe);
         ring[(size_t) ringPos] = pe;
         if (++ringPos >= win) ringPos = 0;
     }
@@ -150,6 +152,25 @@ public:
     }
 
     float gateValue() const { return gateSmooth; }
+
+    // Animation helpers (0..1): how open the mouth is, and how wide (EE) vs round (OO)
+    float mouthOpen() const
+    {
+        if (! p.useVoice)
+        {
+            static const float openness[5] = { 0.35f, 0.6f, 1.0f, 0.75f, 0.45f };
+            const float v = std::clamp (p.vowel + vowelOffset, 0.0f, 4.0f);
+            const int i = std::min (3, (int) v); const float fr = v - (float) i;
+            return open * (openness[i] + fr * (openness[i + 1] - openness[i]));
+        }
+        return gateSmooth;
+    }
+    float mouthWide() const
+    {
+        if (! p.useVoice) return std::clamp ((p.vowel + vowelOffset) / 4.0f, 0.0f, 1.0f);
+        const float db = 10.0f * std::log10 ((ePe + 1e-12f) / (eRaw + 1e-12f));
+        return std::clamp ((db + 18.0f) / 14.0f, 0.0f, 1.0f);
+    }
     float voiceLevel() const { return rms; }
     int getOrder() const { return order; }
     const float* reflection() const { return kCur.data(); }
@@ -277,6 +298,7 @@ private:
     float atkC = 0.01f, relC = 0.0003f, gUp = 0.01f, gDn = 0.001f;
     float smoothA = 0.3f, open = 1.0f, openCoef = 0.99f, vowelOffset = 0.0f;
     bool haveShape = false;
+    float eRaw = 0, ePe = 0;
     int framesAbove = 0, onsetHops = 6;
 };
 } // namespace btb

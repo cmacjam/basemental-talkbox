@@ -2,6 +2,11 @@
 #include "PluginEditor.h"
 #include "Presets.h"
 
+// Voice input
+//   MIC (default): the plug-in opens the microphone itself, like plugging a mic into a real talk box.
+//                  Any input device works: built-in, USB interface, Bluetooth headset/AirPods, iPhone.
+//   SIDE CHAIN   : the DAW routes a track into the plug-in (buses below).
+//
 // Buses
 //   in 0  "Input"              main input. Standalone app: your mic / interface input.
 //   in 1  "Voice (Side Chain)" mono side chain carrying your voice:
@@ -20,6 +25,42 @@ BasementalTalkBoxProcessor::BasementalTalkBoxProcessor()
     for (auto* p : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
             raw[rp->getParameterID()] = apvts.getRawParameterValue (rp->getParameterID());
+    apvts.addParameterListener (ParamID::voiceSource, this);
+}
+
+void BasementalTalkBoxProcessor::parameterChanged (const juce::String&, float) { triggerAsyncUpdate(); }
+
+void BasementalTalkBoxProcessor::handleAsyncUpdate()
+{
+    if (usingMic())
+    {
+        const auto& st = apvts.state;
+        const auto type = st.getProperty ("micType", "").toString();
+        const auto name = st.getProperty ("micName", "").toString();
+        const int ch = (int) st.getProperty ("micChannel", MicBridge::kAutoChannel);
+        if (mic.getState() != MicBridge::State::Running || name != mic.getWantedName() || type != mic.getWantedType())
+            mic.setWanted (type, name, ch);
+        else
+            mic.setChannelMode (ch);
+    }
+    else
+        mic.close();
+}
+
+void BasementalTalkBoxProcessor::chooseMic (const juce::String& type, const juce::String& name, int channel)
+{
+    apvts.state.setProperty ("micType", type, nullptr);
+    apvts.state.setProperty ("micName", name, nullptr);
+    apvts.state.setProperty ("micChannel", channel, nullptr);
+    apvts.state.setProperty ("micChosen", true, nullptr);
+    if (auto* p = apvts.getParameter (ParamID::voiceSource)) p->setValueNotifyingHost (0.0f);
+    mic.setWanted (type, name, channel);
+}
+
+void BasementalTalkBoxProcessor::setMicChannel (int channel)
+{
+    apvts.state.setProperty ("micChannel", channel, nullptr);
+    mic.setChannelMode (channel);
 }
 
 bool BasementalTalkBoxProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -36,7 +77,9 @@ bool BasementalTalkBoxProcessor::isBusesLayoutSupported (const BusesLayout& layo
 void BasementalTalkBoxProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     const auto n = (size_t) std::max (512, samplesPerBlock);
-    voiceBuf.assign (n, 0.0f); outL.assign (n, 0.0f); outR.assign (n, 0.0f);
+    voiceBuf.assign (n, 0.0f); outL.assign (n, 0.0f); outR.assign (n, 0.0f); micBuf.assign (n, 0.0f);
+    mic.prepare (sampleRate);
+    triggerAsyncUpdate();   // open the mic from the message thread (never from the audio thread)
     updateEngineParams();
     engine.prepare (sampleRate, samplesPerBlock);
     keyboardState.reset();
@@ -126,6 +169,7 @@ void BasementalTalkBoxProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     {
         // host gave a bigger block than announced: grow once (rare)
         voiceBuf.resize ((size_t) numSamples); outL.resize ((size_t) numSamples); outR.resize ((size_t) numSamples);
+        micBuf.resize ((size_t) numSamples);
     }
     std::fill (voiceBuf.begin(), voiceBuf.begin() + numSamples, 0.0f);
     int connected = 0;
@@ -144,6 +188,22 @@ void BasementalTalkBoxProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             for (int i = 0; i < numSamples; ++i) voiceBuf[(size_t) i] += src[i] * scale;
         }
     }
+    // Direct mic: when it's running it is the voice (the DAW inputs are ignored, so nothing doubles up).
+    // The standalone app always uses it. If the mic isn't available, fall back to whatever the DAW sends.
+    const bool micMode = isStandalone() || P (ParamID::voiceSource) < 0.5f;
+    if (micMode && mic.isRunning())
+    {
+        mic.read (micBuf.data(), numSamples);
+        const float g = juce::Decibels::decibelsToGain (P (ParamID::micGain));
+        for (int i = 0; i < numSamples; ++i) voiceBuf[(size_t) i] = micBuf[(size_t) i] * g;
+        connected = 1;
+    }
+    else if (micMode)
+    {
+        mic.read (micBuf.data(), numSamples);   // keeps the reader in sync while (re)connecting
+        if (isStandalone()) { std::fill (voiceBuf.begin(), voiceBuf.begin() + numSamples, 0.0f); connected = 0; }
+    }
+
     float inPeak = 0.0f;
     for (int i = 0; i < numSamples; ++i) inPeak = std::max (inPeak, std::abs (voiceBuf[(size_t) i]));
     voiceConnected.store (connected > 0);
@@ -181,6 +241,9 @@ void BasementalTalkBoxProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     gate.store (engine.gateValue());
     outLevel.store (engine.outputLevel());
     activeVoices.store (engine.activeVoices());
+    mouthOpen.store (engine.mouthOpen());
+    mouthWide.store (engine.mouthWide());
+    held.store (engine.heldNotes() > 0);
 }
 
 //==============================================================================
@@ -200,7 +263,8 @@ void BasementalTalkBoxProcessor::setCurrentProgram (int index)
 
     for (auto* param : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (param))
-            rp->setValueNotifyingHost (rp->getDefaultValue());
+            if (rp->getParameterID() != ParamID::voiceSource && rp->getParameterID() != ParamID::micGain)
+                rp->setValueNotifyingHost (rp->getDefaultValue());
 
     for (const auto& [id, value] : ps[(size_t) index].values)
         if (auto* rp = apvts.getParameter (id))
@@ -223,6 +287,7 @@ void BasementalTalkBoxProcessor::setStateInformation (const void* data, int size
             auto vt = juce::ValueTree::fromXml (*xml);
             currentProgram = (int) vt.getProperty ("program", 0);
             apvts.replaceState (vt);
+            triggerAsyncUpdate();   // reopen the project's mic
         }
 }
 

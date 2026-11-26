@@ -56,6 +56,11 @@ BasementalTalkBoxEditor::BasementalTalkBoxEditor (BasementalTalkBoxProcessor& p)
     addSwitch (roomOn, "ON"); addKnob (roomMix, "MIX"); addKnob (roomSize, "SIZE");
     addKnob (bendRange, "BEND"); addKnob (tune, "TUNE"); addKnob (volume, "VOLUME");
 
+    content.addAndMakeVisible (stage);
+    micButton.setTooltip ("Pick your microphone or audio interface (Bluetooth works too)");
+    micButton.onClick = [this] { showMicPanel (micPanel == nullptr); };
+    content.addAndMakeVisible (micButton);
+
     for (auto* b : { &miniButton, &dxButton, &voiceButton, &vowelButton })
     {
         b->setClickingTogglesState (false);
@@ -99,11 +104,36 @@ BasementalTalkBoxEditor::BasementalTalkBoxEditor (BasementalTalkBoxProcessor& p)
     layoutContent();
     startTimerHz (30);
     timerCallback();
+
+    // first run of the app (or a fresh plug-in in mic mode): show where to pick the mic
+    if (proc.usingMic() && ! proc.hasChosenMic())
+        MessageManager::callAsync ([sp = Component::SafePointer<BasementalTalkBoxEditor> (this)] { if (sp) sp->showMicPanel (true); });
+}
+
+void BasementalTalkBoxEditor::showMicPanel (bool show)
+{
+    if (show && micPanel == nullptr)
+    {
+        micPanel = std::make_unique<MicSetupPanel> (proc);
+        micPanel->setBounds (0, 0, kBaseW, kBaseH);
+        micPanel->onClose = [this] {
+            MessageManager::callAsync ([sp = Component::SafePointer<BasementalTalkBoxEditor> (this)] { if (sp) sp->showMicPanel (false); });
+        };
+        content.addAndMakeVisible (*micPanel);
+        micPanel->toFront (true);
+    }
+    else if (! show && micPanel != nullptr)
+    {
+        if (! proc.hasChosenMic() && proc.usingMic())   // closing without picking = keep the system default
+            proc.chooseMic ({}, {}, MicBridge::kAutoChannel);
+        micPanel.reset();
+    }
 }
 
 BasementalTalkBoxEditor::~BasementalTalkBoxEditor()
 {
     stopTimer();
+    micPanel.reset();
     setLookAndFeel (nullptr);
 }
 
@@ -180,14 +210,33 @@ void BasementalTalkBoxEditor::timerCallback()
     enable ({ doubler }, proc.apvts.getRawParameterValue (doublerOn)->load() > 0.5f);
     enable ({ roomMix, roomSize }, proc.apvts.getRawParameterValue (roomOn)->load() > 0.5f);
 
-    // meters (fast attack, slow fall)
-    auto follow = [] (float& shown, float v, float fall) { shown = v > shown ? v : shown * fall; };
-    follow (shownVoice, proc.getVoiceLevel(), 0.85f);
-    follow (shownGate, voiceMode ? proc.getGate() : 1.0f, 0.8f);
-    follow (shownOut, proc.getOutputLevel(), 0.85f);
-    shownVoiceMode = voiceMode;
-    shownConnected = proc.hasVoiceInput();
-    content.repaint (meterArea);
+    // the stage
+    const double now = Time::getMillisecondCounterHiRes();
+    const float dt = lastFrameMs > 0 ? (float) jlimit (0.005, 0.1, (now - lastFrameMs) / 1000.0) : 1.0f / 30.0f;
+    lastFrameMs = now;
+    TalkBoxStage::Frame f;
+    f.open = proc.getMouthOpen() * (voiceMode ? 1.0f : (proc.notesHeld() || proc.getOutputLevel() > 0.01f ? 1.0f : 0.0f));
+    f.wide = proc.getMouthWide();
+    f.out = proc.getOutputLevel();
+    f.voice = proc.getVoiceLevel();
+    f.notes = proc.notesHeld();
+    f.voiceMode = voiceMode;
+    f.vowelLabel = vowelName (proc.apvts.getRawParameterValue (vowel)->load());
+    stage.update (f, dt);
+
+    // mic button: what's connected, with a status light
+    auto& mic = proc.getMic();
+    String label;
+    if (! proc.usingMic()) label = "SIDE CHAIN";
+    else if (mic.getState() == MicBridge::State::Running) label = mic.getOpenName();
+    else if (mic.getState() == MicBridge::State::Missing) label = "Waiting for mic...";
+    else if (mic.getState() == MicBridge::State::Denied) label = "Mic blocked: allow access";
+    else if (mic.getState() == MicBridge::State::Failed) label = "Mic problem: click";
+    else label = "Choose mic";
+    micButton.setButtonText (label);
+    const bool ok = mic.getState() == MicBridge::State::Running;
+    micButton.getProperties().set ("led", ! proc.usingMic() ? 3 : (ok ? 1 : (mic.getState() == MicBridge::State::Missing ? 2 : 0)));
+    micButton.repaint();
 }
 
 void BasementalTalkBoxEditor::paint (Graphics& g) { g.fillAll (Colours_::tolex); }
@@ -204,13 +253,16 @@ void BasementalTalkBoxEditor::layoutContent()
     using namespace ParamID;
     sections.clear();
 
-    // header: [MINI|DX]  [VOICE|VOWEL]  [presets]
-    presetBox.setBounds (kBaseW - 20 - 240, 24, 240, 32);
-    const int bx = kBaseW - 20 - 240 - 24;
-    vowelButton.setBounds (bx - 96, 24, 96, 32);
-    voiceButton.setBounds (bx - 192, 24, 96, 32);
-    dxButton.setBounds (bx - 192 - 20 - 80, 24, 80, 32);
-    miniButton.setBounds (bx - 192 - 20 - 160, 24, 80, 32);
+    // header: [MIC: device]  [MINI|DX]  [VOICE|VOWEL]  [presets]
+    presetBox.setBounds (kBaseW - 20 - 230, 24, 230, 32);
+    int x = kBaseW - 20 - 230 - 20;
+    vowelButton.setBounds (x - 90, 24, 90, 32);
+    voiceButton.setBounds (x - 180, 24, 90, 32);
+    x -= 180 + 16;
+    dxButton.setBounds (x - 70, 24, 70, 32);
+    miniButton.setBounds (x - 140, 24, 70, 32);
+    x -= 140 + 16;
+    micButton.setBounds (x - 230, 24, 230, 32);
     miniButton.setConnectedEdges (Button::ConnectedOnRight);  dxButton.setConnectedEdges (Button::ConnectedOnLeft);
     voiceButton.setConnectedEdges (Button::ConnectedOnRight); vowelButton.setConnectedEdges (Button::ConnectedOnLeft);
 
@@ -224,6 +276,7 @@ void BasementalTalkBoxEditor::layoutContent()
             auto cell = Rectangle<int> (area.getX() + i * w, area.getY(), w, area.getHeight());
             auto* k = knobById[id];
             k->label.setBounds (cell.removeFromTop (labelH));
+            k->slider.setTextBoxStyle (Slider::TextBoxBelow, false, jmin (84, w - 4), 18);
             k->slider.setBounds (cell.reduced (2, 0));
             ++i;
         }
@@ -232,41 +285,45 @@ void BasementalTalkBoxEditor::layoutContent()
     auto inner = [] (Rectangle<int> r) { return r.withTrimmedTop (30).reduced (8, 4); };
     auto placeSwitch = [this] (const char* id, Rectangle<int> sec)
     {
-        switchById[id]->button.setBounds (sec.getRight() - 74, sec.getY() + 5, 66, 20);
+        switchById[id]->button.setBounds (sec.getRight() - 56, sec.getY() + 5, 50, 20);
     };
 
-    // row 1: SYNTH | ENVELOPE
-    const int r1y = 104, rh = 168;
-    auto syn = addSection ("SYNTH", { 20, r1y, 640, rh });
+    // left: the stage (singer, hose, box)
+    stage.setBounds (20, 104, (int) TalkBoxStage::kW, (int) TalkBoxStage::kH);
+
+    // right column: SYNTH, then MOUTH | VOWEL
+    const int rx = 452, rw = kBaseW - 20 - rx, rh = 170;
+    auto syn = addSection ("SYNTH", { rx, 104, rw, rh });
     placeKnobs (inner (syn), { tone, character, envAmt, detune, sub, glide, vibrato }, 16);
     placeSwitch (poly, syn);
-    auto env = addSection ("ENVELOPE", { 672, r1y, 408, rh });
-    placeKnobs (inner (env), { attack, decay, sustain, release }, 16);
-
-    // row 2: MOUTH | VOWEL | THE BOX
-    const int r2y = r1y + rh + 12;
-    auto mo = addSection ("MOUTH", { 20, r2y, 400, rh });
+    const int r2y = 104 + rh + 12;
+    auto mo = addSection ("MOUTH  (YOUR VOICE)", { rx, r2y, 392, rh });
     placeKnobs (inner (mo), { sensitivity, response, brightness, consonants }, 16);
-    auto vw = addSection ("VOWEL  (NO MIC)", { 432, r2y, 312, rh });
+    auto vw = addSection ("VOWEL  (NO MIC)", { rx + 392 + 12, r2y, rw - 392 - 12, rh });
     placeKnobs (inner (vw), { vowel, wah, talkTime }, 16);
-    auto bx2 = addSection ("THE BOX", { 756, r2y, 324, rh });
-    placeKnobs (inner (bx2), { drive, tube, leak }, 16);
 
-    // row 3: DOUBLER | ROOM | MASTER | meters
-    const int r3y = r2y + rh + 12, r3h = 150;
-    auto db = addSection ("DOUBLER", { 20, r3y, 220, r3h });
+    // bottom row: ENVELOPE | THE BOX | DOUBLER | ROOM | MASTER
+    const int r3y = 104 + (int) TalkBoxStage::kH + 12, r3h = 160;
+    int bx = 20;
+    auto next = [&] (int w) { Rectangle<int> r (bx, r3y, w, r3h); bx += w + 12; return r; };
+    auto env = addSection ("ENVELOPE", next (310));
+    placeKnobs (inner (env), { attack, decay, sustain, release }, 16);
+    auto box = addSection ("THE BOX", next (232));
+    placeKnobs (inner (box), { drive, tube, leak }, 16);
+    auto db = addSection ("DOUBLER", next (150));
     placeKnobs (inner (db), { doubler }, 16);
     placeSwitch (doublerOn, db);
-    auto rm = addSection ("ROOM", { 252, r3y, 300, r3h });
+    auto rm = addSection ("ROOM", next (176));
     placeKnobs (inner (rm), { roomMix, roomSize }, 16);
     placeSwitch (roomOn, rm);
-    auto ms = addSection ("MASTER", { 564, r3y, 312, r3h });
+    auto ms = addSection ("MASTER", Rectangle<int> (bx, r3y, kBaseW - 20 - bx, r3h));
     placeKnobs (inner (ms), { bendRange, tune, volume }, 16);
-    meterArea = addSection ("METERS", { 888, r3y, 192, r3h });
+    meterArea = {};
 
     const int ky = r3y + r3h + 16;
     keyboard.setBounds (20, ky, kBaseW - 40, kBaseH - ky - 14);
     keyboard.setKeyWidth ((float) (kBaseW - 40) / 36.0f);   // 36 white keys in C2..C7
+    if (micPanel) micPanel->setBounds (0, 0, kBaseW, kBaseH);
 }
 
 void BasementalTalkBoxEditor::paintContent (Graphics& g)
@@ -285,23 +342,6 @@ void BasementalTalkBoxEditor::paintContent (Graphics& g)
     g.setColour (Colours_::cream);
     g.setFont (FontOptions (30.0f, Font::bold));
     g.drawText (JucePlugin_Name, 22, 32, 360, 36, Justification::centredLeft);
-
-    // a little talk box: the driver can, and the clear hose curling up
-    {
-        const float x = 352.0f, y = 22.0f;
-        g.setColour (Colour (0xff2b2631));
-        g.fillRoundedRectangle (x, y + 22, 34, 30, 4);
-        g.setColour (Colours_::accent.withAlpha (0.8f));
-        g.drawRoundedRectangle (x, y + 22, 34, 30, 4, 1.2f);
-        Path hose;
-        hose.startNewSubPath (x + 17, y + 22);
-        hose.cubicTo (x + 17, y - 4, x + 60, y - 6, x + 62, y + 18);
-        hose.cubicTo (x + 64, y + 36, x + 90, y + 40, x + 98, y + 14);
-        g.setColour (Colours_::tubeClear.withAlpha (0.35f));
-        g.strokePath (hose, PathStrokeType (6.0f, PathStrokeType::curved, PathStrokeType::rounded));
-        g.setColour (Colours_::tubeClear.withAlpha (0.9f));
-        g.strokePath (hose, PathStrokeType (1.4f, PathStrokeType::curved, PathStrokeType::rounded));
-    }
 
     // gold rail + magenta stripe
     Rectangle<float> rail (0, 80, W, 10);
@@ -326,34 +366,22 @@ void BasementalTalkBoxEditor::paintContent (Graphics& g)
         g.fillRect (r.getX() + 12, r.getY() + 26, 26.0f, 2.0f);
     }
 
-    // meters: VOICE IN, MOUTH (gate), OUT
+    // stage frame
     {
-        auto m = meterArea.toFloat().withTrimmedTop (34).reduced (14, 6);
-        auto bar = [&] (Rectangle<float> r, float level, const String& name, Colour c)
-        {
-            const float db = level > 1e-6f ? 20.0f * std::log10 (level) : -90.0f;
-            const float frac = jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
-            g.setColour (Colour (0xff0f0d12));
-            g.fillRoundedRectangle (r.withTrimmedLeft (52), 3);
-            g.setColour (c);
-            auto f = r.withTrimmedLeft (52).reduced (2);
-            g.fillRoundedRectangle (f.withWidth (f.getWidth() * frac), 2);
-            g.setColour (Colours_::textDim);
-            g.setFont (FontOptions (10.5f, Font::bold));
-            g.drawText (name, r.withWidth (50), Justification::centredLeft);
-        };
-        const float h = 14.0f;
-        bar ({ m.getX(), m.getY(), m.getWidth(), h }, shownVoice, "VOICE", Colours_::tubeClear);
-        bar ({ m.getX(), m.getY() + 22, m.getWidth(), h }, shownGate, "MOUTH", Colours_::feltRed.brighter (0.3f));
-        bar ({ m.getX(), m.getY() + 44, m.getWidth(), h }, shownOut, "OUT", Colours_::accent);
-        g.setColour (Colours_::textDim);
-        g.setFont (FontOptions (10.5f));
-        String hint;
-        if (! shownVoiceMode) hint = "Mod wheel = vowel";
-        else if (! shownConnected) hint = "Turn on the side chain input";
-        else if (shownVoice < 0.003f) hint = "Side chain: pick your mic";
-        else hint = "Mouth the words as you play";
-        g.drawFittedText (hint, Rectangle<int> ((int) m.getX(), (int) m.getY() + 66, (int) m.getWidth(), 30), Justification::centredLeft, 2);
+        auto r = stage.getBounds().toFloat().expanded (1.0f);
+        g.setColour (Colours_::accent.withAlpha (0.55f));
+        g.drawRoundedRectangle (r, 9.0f, 1.2f);
+    }
+
+    // mic button status light
+    {
+        const int led = (int) micButton.getProperties().getWithDefault ("led", 0);
+        const auto b = micButton.getBounds().toFloat();
+        const Colour c = led == 1 ? Colour (0xff53e07a) : led == 2 ? Colours_::accent : led == 3 ? Colours_::tubeClear : Colour (0xffff4a4a);
+        g.setColour (c.withAlpha (0.25f)); g.fillEllipse (b.getX() - 19, b.getCentreY() - 7, 14, 14);
+        g.setColour (c); g.fillEllipse (b.getX() - 16, b.getCentreY() - 4, 8, 8);
+        g.setColour (Colours_::textDim); g.setFont (FontOptions (9.5f, Font::bold));
+        g.drawText ("VOICE IN", b.withY (b.getY() - 14).withHeight (12), Justification::centredLeft);
     }
 
     // keyboard frame

@@ -2,6 +2,8 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
 #include "BasementalLookAndFeel.h"
+#include "TalkBoxStage.h"
+#include "MicSetupPanel.h"
 
 class BasementalTalkBoxEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
@@ -12,7 +14,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    static constexpr int kBaseW = 1100, kBaseH = 760;
+    static constexpr int kBaseW = 1180, kBaseH = 820;
 
 private:
     struct Knob
@@ -55,6 +57,11 @@ private:
 
     juce::TextButton miniButton { "MINI" }, dxButton { "DX" };
     juce::TextButton voiceButton { "VOICE" }, vowelButton { "VOWEL" };
+    juce::TextButton micButton;
+    TalkBoxStage stage;
+    std::unique_ptr<MicSetupPanel> micPanel;
+    void showMicPanel (bool show);
+    double lastFrameMs = 0;
     juce::ComboBox presetBox;
     juce::MidiKeyboardComponent keyboard;
     juce::TooltipWindow tooltips { this, 600 };

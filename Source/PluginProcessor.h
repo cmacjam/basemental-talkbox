@@ -3,8 +3,11 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "Parameters.h"
 #include "dsp/TalkBoxEngine.h"
+#include "MicBridge.h"
 
-class BasementalTalkBoxProcessor : public juce::AudioProcessor
+class BasementalTalkBoxProcessor : public juce::AudioProcessor,
+                                   private juce::AsyncUpdater,
+                                   private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     BasementalTalkBoxProcessor();
@@ -43,8 +46,21 @@ public:
     float getOutputLevel() const { return outLevel.load(); }
     bool  hasVoiceInput() const  { return voiceConnected.load(); }
     int   getActiveVoiceCount() const { return activeVoices.load(); }
+    float getMouthOpen() const   { return mouthOpen.load(); }
+    float getMouthWide() const   { return mouthWide.load(); }
+    bool  notesHeld() const      { return held.load(); }
+    bool  isStandalone() const   { return wrapperType == wrapperType_Standalone; }
+
+    // direct microphone (message thread)
+    MicBridge& getMic() { return mic; }
+    void chooseMic (const juce::String& type, const juce::String& name, int channel);  // remembers it in the project
+    void setMicChannel (int channel);
+    bool hasChosenMic() const { return apvts.state.getProperty ("micChosen", false); }
+    bool usingMic() const { return apvts.getRawParameterValue (ParamID::voiceSource)->load() < 0.5f || isStandalone(); }
 
 private:
+    void handleAsyncUpdate() override;   // (re)opens or closes the direct mic on the message thread
+    void parameterChanged (const juce::String& id, float) override;
     void updateEngineParams();
     void handleMidi (const juce::MidiMessage& m);
 
@@ -57,6 +73,10 @@ private:
     std::atomic<float> voiceLevel { 0 }, gate { 0 }, outLevel { 0 };
     std::atomic<bool> voiceConnected { false };
     std::atomic<int> activeVoices { 0 };
+    std::atomic<float> mouthOpen { 0 }, mouthWide { 0.5f };
+    std::atomic<bool> held { false };
+    MicBridge mic;
+    std::vector<float> micBuf;
 
     std::map<juce::String, std::atomic<float>*> raw;
     float P (const char* id) const { return raw.at (id)->load(); }
