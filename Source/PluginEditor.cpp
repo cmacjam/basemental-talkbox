@@ -116,8 +116,9 @@ void BasementalTalkBoxEditor::showMicPanel (bool show)
     {
         micPanel = std::make_unique<MicSetupPanel> (proc);
         micPanel->setBounds (0, 0, kBaseW, kBaseH);
-        micPanel->onClose = [this] {
-            MessageManager::callAsync ([sp = Component::SafePointer<BasementalTalkBoxEditor> (this)] { if (sp) sp->showMicPanel (false); });
+        Component::SafePointer<BasementalTalkBoxEditor> safeThis (this);
+        micPanel->onClose = [safeThis] {
+            MessageManager::callAsync ([safeThis] { if (safeThis != nullptr) safeThis->showMicPanel (false); });
         };
         content.addAndMakeVisible (*micPanel);
         micPanel->toFront (true);
