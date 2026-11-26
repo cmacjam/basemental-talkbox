@@ -27,9 +27,22 @@ Chain: **Synth → Driver → Tube → Mouth → (+ Consonants, Leak) → Mic �
 
 It adds no latency and uses about 2% of one CPU core in mono (4% with 6 poly notes).
 
-## Setting it up in your DAW
+## Plug in a mic and play (the easy way)
 
-The plug-in has a mono **Voice (Side Chain)** input. Your mic goes there. (It also listens on its main input, which is what the standalone app uses.)
+Like a real talk box, the plug-in opens your microphone itself. You don't need any routing.
+
+1. Click the **VOICE IN** button at the top. The **Voice Input** panel lists every mic and interface, marked **BLUETOOTH**, **USB**, **BUILT-IN** or **WIRELESS**.
+2. Click your mic. A green **LIVE** light and the level meter confirm it's working.
+3. Click **Auto-level** and sing for 3 seconds; the mic gain is set for you.
+4. On a multi-input interface, leave the channel on **AUTO** and it follows whichever input you're singing into.
+
+Bluetooth mics (AirPods, headsets) and an iPhone used as a mic work too. Expect about 0.15–0.25 s of lag, and Bluetooth headphones drop to call quality while their mic is in use. Use a wired mic in your interface, or a USB mic, on stage. Unplug and replug whenever you like: it reconnects by itself, and your project remembers the mic.
+
+In the standalone app, the same panel also picks your **speakers or headphones**.
+
+## Or use your DAW's side chain
+
+Switch the panel to **DAW SIDE CHAIN** and route your mic track into the plug-in's mono **Voice (Side Chain)** input:
 
 **Logic Pro / MainStage (AU)**
 1. Create a **Software Instrument** track and load **Basemental Talk Box** (AU Instruments → Basemental).
