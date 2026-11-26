@@ -1,0 +1,166 @@
+name: Build Basemental Talk Box
+
+# Builds every platform on each push:
+#   macOS   -> AU + VST3 + Standalone (+ AAX for Pro Tools), universal arm64/x86_64, .pkg installer
+#   Windows -> VST3 + Standalone (+ AAX for Pro Tools), .zip
+#   Linux   -> VST3 + LV2 + Standalone, .tar.gz with install.sh
+#
+# Pro Tools (AAX) is built only when the repo has a secret named AAX_SDK_URL: a direct download link
+# (e.g. a private release asset or cloud link) to the AAX SDK .zip from developer.avid.com.
+# Avid's licence doesn't allow the SDK to be public, so it can't live in this repo.
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  VERSION: 1.0.0
+
+jobs:
+  dsp-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Offline DSP tests (44.1 / 48 / 96 kHz)
+        run: |
+          cd tests
+          g++ -O2 -std=c++17 render_demo.cpp -o render_demo
+          mkdir -p out
+          ./render_demo 44100 && ./render_demo 48000 && ./render_demo 96000
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch AAX SDK (optional)
+        env:
+          AAX_SDK_URL: ${{ secrets.AAX_SDK_URL }}
+        run: |
+          if [ -n "$AAX_SDK_URL" ]; then
+            curl -L --fail -o aax.zip "$AAX_SDK_URL"
+            mkdir -p aax && unzip -q aax.zip -d aax
+            SDK=$(dirname "$(find "$PWD/aax" -name AAX.h -path '*Interfaces*' | head -1)")/..
+            echo "AAX_ARG=-DAAX_SDK_PATH=$(cd "$SDK" && pwd)" >> $GITHUB_ENV
+          fi
+
+      - name: Configure (universal arm64 + x86_64)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" $AAX_ARG
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Ad-hoc sign
+        run: |
+          ART="build/BasementalTalkBox_artefacts/Release"
+          codesign --force --deep -s - "$ART/AU/Basemental Talk Box.component"
+          codesign --force --deep -s - "$ART/VST3/Basemental Talk Box.vst3"
+          codesign --force --deep -s - "$ART/Standalone/Basemental Talk Box.app"
+
+      - name: Validate Audio Unit (auval)
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R "build/BasementalTalkBox_artefacts/Release/AU/Basemental Talk Box.component" ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          sleep 3
+          auval -v aumu BTlk Bsml
+
+      - name: Build installer (.pkg)
+        run: packaging/build_mac_installer.sh build/BasementalTalkBox_artefacts/Release "$VERSION" dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Basemental-Talk-Box-macOS
+          path: dist/*
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch AAX SDK (optional)
+        shell: pwsh
+        env:
+          AAX_SDK_URL: ${{ secrets.AAX_SDK_URL }}
+        run: |
+          if ($env:AAX_SDK_URL) {
+            Invoke-WebRequest -Uri $env:AAX_SDK_URL -OutFile aax.zip
+            Expand-Archive aax.zip -DestinationPath aax
+            $h = Get-ChildItem -Recurse aax -Filter AAX.h | Where-Object { $_.FullName -like '*Interfaces*' } | Select-Object -First 1
+            $sdk = (Resolve-Path (Join-Path $h.DirectoryName '..')).Path -replace '\\','/'
+            "AAX_ARG=-DAAX_SDK_PATH=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -B build -A x64 $env:AAX_ARG
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $art = "build/BasementalTalkBox_artefacts/Release"
+          $items = @("$art/VST3/Basemental Talk Box.vst3", "$art/Standalone/Basemental Talk Box.exe")
+          if (Test-Path "$art/AAX/Basemental Talk Box.aaxplugin") { $items += "$art/AAX/Basemental Talk Box.aaxplugin" }
+          Copy-Item packaging/INSTALL-Windows.txt "$art/INSTALL.txt"
+          $items += "$art/INSTALL.txt"
+          Compress-Archive -Path $items -DestinationPath "dist/Basemental-Talk-Box-$env:VERSION-Windows.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Basemental-Talk-Box-Windows
+          path: dist/*.zip
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxrender-dev libglu1-mesa-dev mesa-common-dev
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Package (.tar.gz)
+        run: |
+          ART="build/BasementalTalkBox_artefacts/Release"
+          PKG="Basemental-Talk-Box-$VERSION-Linux-x86_64"
+          mkdir -p "dist/$PKG"
+          cp -R "$ART/VST3/Basemental Talk Box.vst3" "$ART/LV2/Basemental Talk Box.lv2" "dist/$PKG/"
+          cp "$ART/Standalone/Basemental Talk Box" "dist/$PKG/"
+          cp packaging/install_linux.sh "dist/$PKG/install.sh"
+          chmod +x "dist/$PKG/install.sh"
+          tar -C dist -czf "dist/$PKG.tar.gz" "$PKG"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Basemental-Talk-Box-Linux
+          path: dist/*.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ dsp-tests, macos, windows, linux ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*

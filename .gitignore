@@ -1,0 +1,6 @@
+build/
+dist/
+tests/out/
+tests/render_demo
+.DS_Store
+*.xcodeproj

@@ -1,0 +1,20 @@
+Basemental Talk Box - Windows install
+
+VST3 (Cubase, Studio One, FL Studio, Ableton Live, Reaper, Bitwig ...)
+  Copy "Basemental Talk Box.vst3" to:
+    C:\Program Files\Common Files\VST3\
+
+AAX (Pro Tools) - only included when built with the AAX SDK
+  Copy "Basemental Talk Box.aaxplugin" to:
+    C:\Program Files\Common Files\Avid\Audio\Plug-Ins\
+  Retail Pro Tools only loads AAX plug-ins signed with PACE/Eden.
+  Unsigned builds load in the free "Pro Tools Developer" version from Avid.
+
+Standalone app
+  Run "Basemental Talk Box.exe" from anywhere. Options > Audio Settings:
+  pick your interface (ASIO is best), set the mic as input, enable your MIDI keyboard.
+
+Using it
+  Load it as an instrument, route your mic into its side-chain input,
+  play the keys and mouth the words. No mic? Switch the mouth to VOWEL
+  and talk with the mod wheel.
